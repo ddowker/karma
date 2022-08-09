@@ -2,7 +2,7 @@ include make/vars.mk
 
 .PHONY: docker-image
 docker-image:
-	docker build --build-arg VERSION=$(VERSION) -t $(NAME):latest .
+	docker build --build-arg VERSION=$(VERSION) --platform linux/amd64 -t $(NAME):latest .
 
 .PHONY: run-demo
 run-demo:
