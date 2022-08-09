@@ -422,10 +422,14 @@ func (am *Alertmanager) Pull() error {
 	am.clusterName = ""
 	am.lock.Unlock()
 
+	failedHc := []string{}
 	for name, hc := range am.healthchecks {
 		if !hc.wasFound {
-			am.setError(fmt.Sprintf("Healthcheck filter %q didn't match any alerts", name))
+			failedHc = append(failedHc, name)
 		}
+	}
+	if len(failedHc) > 0 {
+		am.setError(fmt.Sprintf("Healthcheck filter %q didn't match any alerts", strings.Join(failedHc, ", ")))
 	}
 
 	return nil
