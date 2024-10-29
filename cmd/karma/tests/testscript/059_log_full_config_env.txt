@@ -63,6 +63,7 @@ env RECEIVERS_STRIP='strip1 strip2'
 env SILENCES_EXPIRED=1s
 
 env SILENCEFORM_STRIP_LABELS='job severity region'
+env SILENCEFORM_DEFAULTALERTMANAGERS='am1'
 
 env UI_REFRESH=10s
 env UI_HIDEFILTERSWHENIDLE=false
@@ -208,6 +209,8 @@ level=info msg="    cert: \"\""
 level=info msg="    key: \"\""
 level=info msg="  port: 1234"
 level=info msg="  prefix: /prefix/"
+level=info msg="  cors:"
+level=info msg="    allowedOrigins: []"
 level=info msg="log:"
 level=info msg="  level: info"
 level=info msg="  format: text"
@@ -232,6 +235,8 @@ level=info msg="    labels:"
 level=info msg="      - job"
 level=info msg="      - severity"
 level=info msg="      - region"
+level=info msg="  defaultAlertmanagers:"
+level=info msg="    - am1"
 level=info msg="ui:"
 level=info msg="  refresh: 10s"
 level=info msg="  hideFiltersWhenIdle: false"
@@ -243,5 +248,5 @@ level=info msg="  alertsPerGroup: 2"
 level=info msg="  collapseGroups: expanded"
 level=info msg="  multiGridLabel: cluster"
 level=info msg="  multiGridSortReverse: true"
-level=info msg="Configured Alertmanager source" name=ro proxy=false readonly=true uri=http://127.0.0.1:9093
+level=info msg="Configured Alertmanager source" cluster=ro name=ro proxy=false readonly=true uri=http://127.0.0.1:9093
 level=info msg="Configuration is valid"

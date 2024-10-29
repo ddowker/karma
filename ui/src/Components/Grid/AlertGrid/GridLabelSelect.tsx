@@ -42,20 +42,20 @@ const GridLabelNameSelect: FC<{
 }> = ({ alertStore, settingsStore, grid, onClose }) => {
   const loadOptions = (
     inputValue: string,
-    callback: (options: OptionT[]) => void
+    callback: (options: OptionT[]) => void,
   ) => {
     const autoEnabled =
       settingsStore.multiGridConfig.config.gridLabel === "@auto";
     const options = [
       ...specialLabels.filter(
         (val) =>
-          val.value !== "@auto" || (val.value === "@auto" && !autoEnabled)
+          val.value !== "@auto" || (val.value === "@auto" && !autoEnabled),
       ),
       ...alertStore.data.labelNames
         .filter(
           (labelName) =>
             autoEnabled === true ||
-            (autoEnabled === false && labelName !== grid.labelName)
+            (autoEnabled === false && labelName !== grid.labelName),
         )
         .sort()
         .map((key) => StringToOption(key)),
@@ -142,7 +142,7 @@ const GridLabelSelect: FC<{
   const ref = useRef<HTMLDivElement | null>(null);
   useOnClickOutside(ref, hide, isVisible);
 
-  const { x, y, reference, floating, strategy } = useFloating({
+  const { x, y, refs, strategy } = useFloating({
     placement: "bottom",
     middleware: [shift(), offset(5)],
   });
@@ -150,7 +150,7 @@ const GridLabelSelect: FC<{
   return (
     <div ref={ref} className="components-label badge ps-1 pe-2">
       <span
-        ref={reference}
+        ref={refs.setReference}
         onClick={toggle}
         className="border-0 rounded-0 bg-inherit cursor-pointer px-1 py-0 components-grid-label-select-dropdown"
         data-toggle="dropdown"
@@ -165,7 +165,7 @@ const GridLabelSelect: FC<{
           onClose={toggle}
           x={x}
           y={y}
-          floating={floating}
+          floating={refs.setFloating}
           strategy={strategy}
         />
       </DropdownSlide>

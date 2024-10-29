@@ -22,9 +22,10 @@ const FilterInputLabel: FC<{
     // if filter is empty string then remove it
     if (val === "") {
       alertStore.filters.removeFilter(filter.raw);
+    } else {
+      // if not empty replace it
+      alertStore.filters.replaceFilter(filter.raw, val);
     }
-    // if not empty replace it
-    alertStore.filters.replaceFilter(filter.raw, val);
   };
 
   const cs = GetClassAndStyle(
@@ -32,7 +33,7 @@ const FilterInputLabel: FC<{
     filter.matcher === QueryOperators.Equal ? filter.name : "",
     filter.matcher === QueryOperators.Equal ? filter.value : "",
     "components-filteredinputlabel btn-sm",
-    "btn"
+    "btn",
   );
 
   const rootClasses = filter.applied
@@ -51,7 +52,7 @@ const FilterInputLabel: FC<{
       {filter.isValid ? (
         filter.applied ? (
           alertStore.filters.values.filter(
-            (f) => f.hits !== alertStore.info.totalAlerts
+            (f) => f.hits !== alertStore.info.totalAlerts,
           ).length > 0 ? (
             <span className="badge bg-light rounded-pill">{filter.hits}</span>
           ) : null

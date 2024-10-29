@@ -77,7 +77,7 @@ func (m *ClusterStatus) validatePeers(formats strfmt.Registry) error {
 	return nil
 }
 
-var clusterStatusTypeStatusPropEnum []any
+var clusterStatusTypeStatusPropEnum []interface{}
 
 func init() {
 	var res []string
@@ -142,6 +142,11 @@ func (m *ClusterStatus) contextValidatePeers(ctx context.Context, formats strfmt
 	for i := 0; i < len(m.Peers); i++ {
 
 		if m.Peers[i] != nil {
+
+			if swag.IsZero(m.Peers[i]) { // not required
+				return nil
+			}
+
 			if err := m.Peers[i].ContextValidate(ctx, formats); err != nil {
 				if ve, ok := err.(*errors.Validation); ok {
 					return ve.ValidateName("peers" + "." + strconv.Itoa(i))

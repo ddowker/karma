@@ -44,6 +44,9 @@ listen:
   address: "0.0.0.0"
   port: 8080
   prefix: /
+  cors:
+    allowedOrigins:
+      - https://example.com
 log:
   config: false
   level: info
@@ -60,6 +63,8 @@ silenceForm:
   strip:
     labels:
       - job
+  defaultAlertmanagers:
+    - local
 ui:
   refresh: 30s
   hideFiltersWhenIdle: true

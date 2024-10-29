@@ -1,8 +1,9 @@
 name: Maintenance
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: "0 20 * * 0"
+    - cron: "0 12 * * 2"
 
 jobs:
   npm-upgrades:
@@ -10,12 +11,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
+          node-version: 21.7.1
 
       - name: Regenerate package-lock.json
         run: make -C ui npm-upgrade
@@ -25,7 +26,7 @@ jobs:
 
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v4.0.4
+        uses: peter-evans/create-pull-request@v6.0.2
         with:
           token: ${{ secrets.GH_REPO_TOKEN }}
           author: "Łukasz Mierzwa <l.mierzwa@gmail.com>"
@@ -41,8 +42,6 @@ jobs:
 
       - name: Enable Pull Request Automerge
         if: steps.cpr.outputs.pull-request-operation == 'created'
-        uses: peter-evans/enable-pull-request-automerge@v2.1.0
-        with:
-          token: ${{ secrets.GH_REPO_TOKEN }}
-          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
-          merge-method: rebase
+        run: gh pr merge --merge --auto npm-upgrades
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}

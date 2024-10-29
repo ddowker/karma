@@ -11,9 +11,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/prymitive/karma/internal/alertmanager"
 	"github.com/prymitive/karma/internal/config"
+	"github.com/prymitive/karma/internal/mapper"
 	"github.com/prymitive/karma/internal/slices"
 	uriUtil "github.com/prymitive/karma/internal/uri"
 )
@@ -124,14 +126,15 @@ type knownBadUpstream struct {
 type historyPoller struct {
 	queue        chan historyJob
 	queryTimeout time.Duration
-	knownBad     *lru.Cache
-	cache        *lru.Cache
+	knownBad     *lru.Cache[string, *knownBadUpstream]
+	cache        *lru.Cache[string, *cachedOffsets]
+	isRunning    atomic.Bool
 }
 
 func newHistoryPoller(queueSize int, queryTimeout time.Duration) *historyPoller {
 	log.Debug().Int("queue", queueSize).Dur("timeout", queryTimeout).Msg("Starting history poller")
-	cache, _ := lru.New(1000)
-	knownBad, _ := lru.New(100)
+	cache, _ := lru.New[string, *cachedOffsets](1000)
+	knownBad, _ := lru.New[string, *knownBadUpstream](100)
 	return &historyPoller{
 		queue:        make(chan historyJob, queueSize),
 		queryTimeout: queryTimeout,
@@ -141,6 +144,7 @@ func newHistoryPoller(queueSize int, queryTimeout time.Duration) *historyPoller 
 }
 
 func (hp *historyPoller) run(workers int) {
+	hp.isRunning.Store(true)
 	wg := sync.WaitGroup{}
 	for w := 1; w <= workers; w++ {
 		w := w
@@ -155,11 +159,14 @@ func (hp *historyPoller) run(workers int) {
 
 func (hp *historyPoller) stop() {
 	log.Debug().Msg("Stopping history poller")
+	hp.isRunning.Store(false)
 	close(hp.queue)
 }
 
 func (hp *historyPoller) submit(uri string, labels map[string]string, result chan<- historyQueryResult) {
-	hp.queue <- historyJob{uri: uri, labels: labels, result: result}
+	if hp.isRunning.Load() {
+		hp.queue <- historyJob{uri: uri, labels: labels, result: result}
+	}
 }
 
 func (hp *historyPoller) cacheSave(key string, values []OffsetSample) {
@@ -168,7 +175,7 @@ func (hp *historyPoller) cacheSave(key string, values []OffsetSample) {
 
 func (hp *historyPoller) cacheLookup(key string) *cachedOffsets {
 	if val, found := hp.cache.Get(key); found {
-		return val.(*cachedOffsets)
+		return val
 	}
 	return nil
 }
@@ -179,7 +186,7 @@ func (hp *historyPoller) knownBadSave(key string, kb knownBadUpstream) {
 
 func (hp *historyPoller) knownBadLookup(key string) (*knownBadUpstream, bool) {
 	if val, found := hp.knownBad.Get(key); found {
-		return val.(*knownBadUpstream), true
+		return val, true
 	}
 	return nil, false
 }
@@ -187,7 +194,7 @@ func (hp *historyPoller) knownBadLookup(key string) (*knownBadUpstream, bool) {
 func (hp *historyPoller) startWorker(wid int) {
 	log.Debug().Int("worker", wid).Int("queue", cap(hp.queue)).Dur("timeout", hp.queryTimeout).Msg("Starting history poller")
 	for j := range hp.queue {
-		sourceURI := rewriteSource(config.Config.History.Rewrite, j.uri)
+		sourceURI, headers := rewriteSource(config.Config.History.Rewrite, j.uri)
 		expiredAt := time.Now().Add(time.Minute * -5)
 		key := hashQuery(sourceURI, j.labels)
 		if kb, found := hp.knownBadLookup(key); found && kb.timestamp.After(expiredAt) {
@@ -218,6 +225,9 @@ func (hp *historyPoller) startWorker(wid int) {
 				Err(err).
 				Msg("Error while configuring HTTP transport for history request")
 		}
+		if len(headers) > 0 {
+			transport = mapper.SetHeaders(transport, headers)
+		}
 		values, err := countAlerts(sourceURI, hp.queryTimeout, transport, j.labels)
 		if err != nil {
 			log.Error().
@@ -246,7 +256,7 @@ func hashQuery(uri string, labels map[string]string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func rewriteSource(rules []config.HistoryRewrite, uri string) string {
+func rewriteSource(rules []config.HistoryRewrite, uri string) (string, map[string]string) {
 	// trim trailing / to ensure all URIs are without a /
 	uri = strings.TrimSuffix(uri, "/")
 	for _, rule := range rules {
@@ -258,9 +268,9 @@ func rewriteSource(rules []config.HistoryRewrite, uri string) string {
 			result = rule.SourceRegex.ExpandString(result, rule.URI, uri, submatches)
 		}
 		log.Debug().Str("source", uri).Str("uri", string(result)).Msg("Alert history source rewrite")
-		return string(result)
+		return string(result), rule.Headers
 	}
-	return uri
+	return uri, nil
 }
 
 func rewriteTransport(rules []config.HistoryRewrite, uri string) (http.RoundTripper, error) {

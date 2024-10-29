@@ -268,6 +268,10 @@ alertmanager:
 - `headers` - a map with a list of key: values which are header: value.
   These custom headers will be sent with every request to the alert manager
   instance.
+  **NOTE**: these headers are only sent for alertmanager requests, they are NOT set
+  on requests send to Prometheus server when querying alert history.
+  Please see `history:rewrite` section below if you want to set headers
+  for Prometheus requests.
 - `cors:credentials` - sets the
   [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) credentials
   settings for browser requests,
@@ -760,6 +764,8 @@ history:
     - source: regex
       uri: string
       proxy_url: string
+      headers:
+        any: string
       tls:
         ca: string
         cert: string
@@ -840,6 +846,18 @@ history:
     - source: '(.*)'
       uri: '$1'
       proxy_url: socks5://proxy.local:5000
+```
+
+Example with rewrite rule that will set an extra header for all history request
+send to Prometheus server `http://prometheus.example.com`:
+
+```YAML
+history:
+  rewrite:
+    - source: 'http://prometheus.example.com'
+      headers:
+        X-Auth: secret
+        X-Foo: bar
 ```
 
 ### Karma
@@ -1052,6 +1070,8 @@ listen:
   tls:
     cert: string
     key: string
+  cors:
+    allowedOrigins: list of strings
 ```
 
 - `address` - Hostname or IP to listen on.
@@ -1063,6 +1083,8 @@ listen:
   reverse proxy with other services on the same IP but different URL root.
 - `tls:cert` - path to a TLS certificate, enables listening on HTTPS instead of HTTP,
 - `tls:key` - path to a TLS key, required when `tls.cert` is set
+- `cors:allowedOrigins` - List of origins a cross-domain request can be executed
+  from. An empty list means all origins are allowed.
 
 Example where karma would listen for HTTP requests on `http://1.2.3.4:80/karma/`
 
@@ -1094,6 +1116,8 @@ listen:
   tls:
     cert: ""
     key: ""
+  cors:
+    allowedOrigins: []
 ```
 
 ### Log
@@ -1224,10 +1248,15 @@ Syntax:
 
 ```YAML
 silenceForm:
+  defaultAlertmanagers: list of strings
   strip:
     labels: list of strings
 ```
 
+- `defaultAlertmanagers` - list of Alertmanager names that will be used as
+  default when creating a new silence.
+  If selected alertmanager is part of a cluster then the whole cluster will
+  be used in the silence form.
 - `strip:labels` - list of labels to ignore when populating silence form from
   individual alerts or group of alerts. This allows to create silences matching
   only unique labels, like `instance` or `host`, ignoring any common labels like
@@ -1240,6 +1269,16 @@ silenceForm:
   strip:
     labels:
       - job
+```
+
+Example where alertmanagers `prod1` and `prod2` will be the default ones when
+creating a new silence
+
+```YAML
+silenceForm:
+  defaultAlertmanagers:
+    - prod1
+    - prod2
 ```
 
 ## UI defaults

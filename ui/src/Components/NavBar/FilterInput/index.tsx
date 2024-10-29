@@ -43,13 +43,13 @@ const FilterInput: FC<{
 
   const { response, error, isLoading, get, cancelGet } = useFetchGet<string[]>(
     FormatBackendURI(`autocomplete.json?term=${debouncedSearchTerm}`),
-    { autorun: false }
+    { autorun: false },
   );
 
   // eslint-disable-next-line @typescript-eslint/ban-types
   const stateReducer = (
     state: UseComboboxState<string>,
-    actionAndChanges: UseComboboxStateChangeOptions<string>
+    actionAndChanges: UseComboboxStateChangeOptions<string>,
   ) => {
     const { type, changes } = actionAndChanges;
     switch (type) {
@@ -66,7 +66,6 @@ const FilterInput: FC<{
     isOpen,
     getMenuProps,
     getInputProps,
-    getComboboxProps,
     highlightedIndex,
     getItemProps,
     setInputValue,
@@ -95,7 +94,7 @@ const FilterInput: FC<{
       setInputValue("");
       setSuggestions([]);
     },
-    [alertStore.filters, setInputValue]
+    [alertStore.filters, setInputValue],
   );
 
   const onInputClick = (className: string) => {
@@ -155,10 +154,7 @@ const FilterInput: FC<{
               filter={filter}
             />
           ))}
-          <div
-            className="autosuggest d-inline-block mw-100"
-            {...getComboboxProps()}
-          >
+          <div className="autosuggest d-inline-block mw-100">
             {alertStore.filters.values.length ? null : (
               <span className="input-group-text text-muted d-inline-block me-2 border-0 bg-inherit px-1">
                 <FontAwesomeIcon icon={faSearch} />
@@ -167,7 +163,6 @@ const FilterInput: FC<{
             <input
               className="components-filterinput-wrapper text-white mw-100"
               size={inputValue ? inputValue.length + 1 : 1}
-              onClick={() => setIsFocused(true)}
               {...getInputProps({ ref: inputRef })}
             />
           </div>

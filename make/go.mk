@@ -5,11 +5,11 @@ ifeq ($(GOBIN),)
 GOBIN = $(shell go env GOPATH)/bin
 endif
 
-ui/build/index.html: $(call rwildcard, ui/src ui/package.json ui/package-lock.json, *)
+ui/dist/index.html: $(call rwildcard, ui/src ui/package.json ui/package-lock.json, *)
 	@$(MAKE) -C ui build
 
 .DEFAULT_GOAL := $(NAME)
-$(NAME): go.mod go.sum $(SOURCES_GO) ui/build/index.html
+$(NAME): go.mod go.sum $(SOURCES_GO) ui/dist/index.html
 	go build -trimpath -modcacherw -ldflags "-X main.version=$(VERSION) -s -w" ./cmd/karma
 
 .PHONY: test-go
@@ -29,16 +29,10 @@ $(GOBIN)/benchstat: tools/benchstat/go.mod tools/benchstat/go.sum
 benchmark-compare-go: $(GOBIN)/benchstat
 	@$(GOBIN)/benchstat main.txt new.txt
 
-$(GOBIN)/looppointer: tools/looppointer/go.mod tools/looppointer/go.sum
-	go install -modfile=tools/looppointer/go.mod github.com/kyoh86/looppointer/cmd/looppointer
-.PHONY: lint-go-looppointer
-lint-go-looppointer: $(GOBIN)/looppointer
-	$(ENV) looppointer -c 2 ./...
-
 $(GOBIN)/golangci-lint: tools/golangci-lint/go.mod tools/golangci-lint/go.sum
 	go install -modfile=tools/golangci-lint/go.mod github.com/golangci/golangci-lint/cmd/golangci-lint
 .PHONY: lint-go
-lint-go: $(GOBIN)/golangci-lint lint-go-looppointer
+lint-go: $(GOBIN)/golangci-lint
 	$(ENV) golangci-lint run -v
 
 $(GOBIN)/goimports: tools/goimports/go.mod tools/goimports/go.sum
@@ -61,11 +55,12 @@ openapi-client:
 
 .PHONY: mock-assets
 mock-assets:
-	rm -fr ui/build
-	mkdir ui/build
-	cp ui/public/* ui/build/
-	mkdir ui/build/static
-	touch ui/build/static/main.js
+	rm -fr ui/dist
+	mkdir ui/dist
+	cp ui/public/* ui/dist/
+	cp ui/index.html ui/dist/
+	mkdir ui/dist/assets
+	touch ui/dist/assets/main.js
 
 .PHONY: tools-go-mod-tidy
 tools-go-mod-tidy:

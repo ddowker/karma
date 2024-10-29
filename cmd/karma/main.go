@@ -28,7 +28,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/klauspost/compress/flate"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
@@ -47,7 +47,7 @@ var (
 	// apiCache will be used to keep short lived copy of JSON reponses generated for the UI
 	// If there are requests with the same filter we should respond from cache
 	// rather than do all the filtering every time
-	apiCache *lru.Cache
+	apiCache *lru.Cache[string, []byte]
 
 	indexTemplate *template.Template
 
@@ -80,26 +80,31 @@ func getViewURL(sub string) string {
 func setupRouter(router *chi.Mux, historyPoller *historyPoller) {
 	_ = mime.AddExtensionType(".ico", "image/x-icon")
 
+	router.Use(proxyPathFixMiddleware)
 	router.Use(promMiddleware)
 	router.Use(middleware.RealIP)
 
 	compressor := middleware.NewCompressor(flate.DefaultCompression)
 	router.Use(compressor.Handler)
 
-	router.Use(serverStaticFiles(getViewURL("/"), "build"))
+	router.Use(serverStaticFiles(getViewURL("/"), "dist"))
 	router.Use(serverStaticFiles(getViewURL("/__test__/"), "mock"))
-	router.Use(cors.Handler(cors.Options{
-		AllowOriginFunc: func(r *http.Request, origin string) bool {
-			return true
-		},
+	corsOptions := cors.Options{
+		AllowedOrigins:   config.Config.Listen.Cors.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "DELETE"},
 		AllowedHeaders:   []string{"Origin"},
 		ExposedHeaders:   []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
-	}))
+	}
+	if len(corsOptions.AllowedOrigins) == 0 {
+		corsOptions.AllowOriginFunc = func(_ *http.Request, _ string) bool {
+			return true
+		}
+	}
+	router.Use(cors.Handler(corsOptions))
 
-	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		contentText(w)
 		w.WriteHeader(http.StatusNotFound)
@@ -174,7 +179,7 @@ func setupRouter(router *chi.Mux, historyPoller *historyPoller) {
 		}
 	}
 
-	walkFunc := func(method, route string, handler http.Handler, middlewares ...func(http.Handler) http.Handler) error {
+	walkFunc := func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		log.Debug().
 			Str("method", method).
 			Str("route", route).
@@ -250,7 +255,7 @@ func lvlFormatter(level any) string {
 	return fmt.Sprintf("level=%s", level)
 }
 
-func discardFormatter(msg any) string {
+func discardFormatter(_ any) string {
 	return ""
 }
 
@@ -320,7 +325,7 @@ func setupLogger() error {
 
 func loadTemplates() error {
 	var t *template.Template
-	t, err := template.ParseFS(ui.StaticFiles, "build/index.html")
+	t, err := template.ParseFS(ui.StaticFiles, "dist/index.html")
 	if err != nil {
 		return fmt.Errorf("failed to load template: %w", err)
 	}
@@ -385,7 +390,7 @@ func mainSetup(errorHandling pflag.ErrorHandling) (*chi.Mux, *historyPoller, err
 	}
 	transform.SetLinkRules(linkDetectRules)
 
-	apiCache, _ = lru.New(1024)
+	apiCache, _ = lru.New[string, []byte](1024)
 
 	err = setupUpstreams()
 	if err != nil {
@@ -519,8 +524,8 @@ func serve(errorHandling pflag.ErrorHandling) error {
 	}
 
 	signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Info().Msg("Shutting down HTTP server")
+	s := <-quit
+	log.Info().Stringer("signal", s).Msg("Shutting down HTTP server")
 
 	historyPoller.stop()
 

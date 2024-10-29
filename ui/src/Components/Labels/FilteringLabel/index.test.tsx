@@ -16,7 +16,7 @@ beforeEach(() => {
 
 const MountedFilteringLabel = (name: string, value: string) => {
   return mount(
-    <FilteringLabel alertStore={alertStore} name={name} value={value} />
+    <FilteringLabel alertStore={alertStore} name={name} value={value} />,
   ).find(".components-label");
 };
 
@@ -28,7 +28,7 @@ const RenderAndClick = (name: string, value: string, clickOptions?: any) => {
 describe("<FilteringLabel />", () => {
   it("matches snapshot", () => {
     const tree = mount(
-      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />
+      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />,
     );
     expect(toDiffableHtml(tree.html())).toMatchSnapshot();
   });
@@ -37,7 +37,7 @@ describe("<FilteringLabel />", () => {
     RenderAndClick("foo", "bar");
     expect(alertStore.filters.values).toHaveLength(1);
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("foo=bar")
+      NewUnappliedFilter("foo=bar"),
     );
   });
 
@@ -45,7 +45,7 @@ describe("<FilteringLabel />", () => {
     RenderAndClick("foo", "bar", { altKey: true });
     expect(alertStore.filters.values).toHaveLength(1);
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("foo!=bar")
+      NewUnappliedFilter("foo!=bar"),
     );
   });
 
@@ -54,10 +54,10 @@ describe("<FilteringLabel />", () => {
     RenderAndClick("bar", "baz");
     expect(alertStore.filters.values).toHaveLength(2);
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("foo=bar")
+      NewUnappliedFilter("foo=bar"),
     );
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("bar=baz")
+      NewUnappliedFilter("bar=baz"),
     );
   });
 
@@ -67,23 +67,29 @@ describe("<FilteringLabel />", () => {
   });
 
   it("label with dark background color should have 'components-label-dark' class", () => {
-    alertStore.data.colors["foo"] = {
-      bar: {
-        brightness: 125,
-        background: "rgba(4,5,6,200)",
+    alertStore.data.setColors({
+      foo: {
+        bar: {
+          brightness: 125,
+          background: "rgba(4,5,6,200)",
+        },
       },
-    };
+      ...alertStore.data.colors,
+    });
     const tree = MountedFilteringLabel("foo", "bar");
     expect(tree.hasClass("components-label-dark")).toBe(true);
   });
 
   it("label with bright background color should have 'components-label-bright' class", () => {
-    alertStore.data.colors["foo"] = {
-      bar: {
-        brightness: 200,
-        background: "rgba(4,5,6,200)",
+    alertStore.data.setColors({
+      foo: {
+        bar: {
+          brightness: 200,
+          background: "rgba(4,5,6,200)",
+        },
       },
-    };
+      ...alertStore.data.colors,
+    });
     const tree = MountedFilteringLabel("foo", "bar");
     expect(tree.hasClass("components-label-bright")).toBe(true);
   });
@@ -98,7 +104,7 @@ describe("<FilteringLabel />", () => {
       },
     });
     const tree = mount(
-      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />
+      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />,
     );
     expect(tree.text()).toBe("bar");
   });
@@ -113,7 +119,7 @@ describe("<FilteringLabel />", () => {
       },
     });
     const tree = mount(
-      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />
+      <FilteringLabel alertStore={alertStore} name="foo" value="bar" />,
     );
     expect(tree.text()).toBe("foo: bar");
   });

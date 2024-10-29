@@ -35,7 +35,7 @@ const onSilenceClick = (
   alertStore: AlertStore,
   silenceFormStore: SilenceFormStore,
   group: APIAlertGroupT,
-  alert: APIAlertT
+  alert: APIAlertT,
 ) => {
   const clusters: { [cluster: string]: string[] } = {};
   Object.entries(alertStore.data.clustersWithoutReadOnly).forEach(
@@ -43,7 +43,7 @@ const onSilenceClick = (
       if (alert.alertmanager.map((am) => am.cluster).includes(cluster)) {
         clusters[cluster] = members;
       }
-    }
+    },
   );
 
   silenceFormStore.data.resetProgress();
@@ -51,7 +51,7 @@ const onSilenceClick = (
     group,
     alertStore.settings.values.silenceForm.strip.labels,
     AlertmanagerClustersToOption(clusters),
-    [alert]
+    [alert],
   );
   silenceFormStore.tab.setTab("editor");
   silenceFormStore.toggle.show();
@@ -180,7 +180,7 @@ const AlertMenu: FC<{
     const rootRef = useRef<HTMLSpanElement | null>(null);
     useOnClickOutside(rootRef, hide, !isHidden);
 
-    const { x, y, reference, floating, strategy } = useFloating({
+    const { x, y, refs, strategy } = useFloating({
       placement: "bottom-start",
       middleware: [shift(), offset(5)],
     });
@@ -189,7 +189,7 @@ const AlertMenu: FC<{
       <span ref={rootRef}>
         <span
           className="components-label components-label-with-hover px-1 me-1 badge bg-secondary cursor-pointer"
-          ref={reference}
+          ref={refs.setReference}
           onClick={toggle}
           data-toggle="dropdown"
         >
@@ -209,13 +209,13 @@ const AlertMenu: FC<{
             afterClick={hide}
             x={x}
             y={y}
-            floating={floating}
+            floating={refs.setFloating}
             strategy={strategy}
           />
         </DropdownSlide>
       </span>
     );
-  }
+  },
 );
 
 export { AlertMenu, MenuContent };

@@ -5,7 +5,6 @@ import { MockGroup } from "__fixtures__/Stories";
 import {
   AlertStore,
   AlertStoreStatuses,
-  FormatBackendURI,
   FormatAlertsQ,
   DecodeLocationSearch,
   UpdateLocationSearch,
@@ -19,8 +18,6 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   fetchMock.reset();
-  // wipe REACT_APP_BACKEND_URI env on each run as it's used by some tests
-  delete process.env.REACT_APP_BACKEND_URI;
 });
 
 describe("AlertStore.data", () => {
@@ -57,7 +54,7 @@ describe("AlertStore.data", () => {
       ],
     });
     expect(
-      store.data.getClusterAlertmanagersWithoutReadOnly("default")
+      store.data.getClusterAlertmanagersWithoutReadOnly("default"),
     ).toEqual(["default"]);
   });
 
@@ -94,8 +91,94 @@ describe("AlertStore.data", () => {
       ],
     });
     expect(
-      store.data.getClusterAlertmanagersWithoutReadOnly("default")
+      store.data.getClusterAlertmanagersWithoutReadOnly("default"),
     ).toEqual([]);
+  });
+
+  it("clustersWithoutReadOnly lists healthy members first", () => {
+    const store = new AlertStore([]);
+    store.data.setUpstreams({
+      counters: { total: 2, healthy: 1, failed: 1 },
+      clusters: { default: ["am1", "am2"] },
+      instances: [
+        {
+          name: "am1",
+          uri: "http://localhost",
+          publicURI: "http://example.com:8080",
+          readonly: false,
+          headers: { foo: "bar" },
+          corsCredentials: "include",
+          error: "bad",
+          version: "0.24.0",
+          cluster: "default",
+          clusterMembers: ["am1", "am2"],
+        },
+        {
+          name: "am2",
+          uri: "http://localhost:8081",
+          publicURI: "http://example.com",
+          readonly: false,
+          headers: {},
+          corsCredentials: "include",
+          error: "",
+          version: "0.24.0",
+          cluster: "default",
+          clusterMembers: ["am1", "am2"],
+        },
+      ],
+    });
+    expect(store.data.clustersWithoutReadOnly).toEqual({
+      default: ["am2", "am1"],
+    });
+  });
+
+  it("clustersWithoutReadOnly keeps healthy order", () => {
+    const store = new AlertStore([]);
+    store.data.setUpstreams({
+      counters: { total: 3, healthy: 3, failed: 0 },
+      clusters: { default: ["am1", "am2", "am3"] },
+      instances: [
+        {
+          name: "am1",
+          uri: "http://localhost",
+          publicURI: "http://example.com:8080",
+          readonly: false,
+          headers: { foo: "bar" },
+          corsCredentials: "include",
+          error: "",
+          version: "0.24.0",
+          cluster: "default",
+          clusterMembers: ["am1", "am2", "am3"],
+        },
+        {
+          name: "am2",
+          uri: "http://localhost:8081",
+          publicURI: "http://example.com",
+          readonly: false,
+          headers: {},
+          corsCredentials: "include",
+          error: "",
+          version: "0.24.0",
+          cluster: "default",
+          clusterMembers: ["am1", "am2", "am3"],
+        },
+        {
+          name: "am3",
+          uri: "http://localhost:8081",
+          publicURI: "http://example.com",
+          readonly: false,
+          headers: {},
+          corsCredentials: "include",
+          error: "",
+          version: "0.24.0",
+          cluster: "default",
+          clusterMembers: ["am1", "am2", "am3"],
+        },
+      ],
+    });
+    expect(store.data.clustersWithoutReadOnly).toEqual({
+      default: ["am1", "am2", "am3"],
+    });
   });
 });
 
@@ -225,10 +308,10 @@ describe("AlertStore.filters", () => {
     expect(store.filters.values[0]).toMatchObject(NewUnappliedFilter("bar"));
   });
 
-  it("replaceFilter('foo', 'bar') should not replace anything if filter list is empty", () => {
+  it("replaceFilter('foo', 'bar') should add 'bar' in empty list", () => {
     const store = new AlertStore([]);
     store.filters.replaceFilter("foo", "bar");
-    expect(store.filters.values).toHaveLength(0);
+    expect(store.filters.values).toHaveLength(1);
   });
 
   it("replaceFilter('foo', 'new') should replace correct filter", () => {
@@ -259,7 +342,7 @@ describe("AlertStore.filters", () => {
     expect(historyMock).toHaveBeenLastCalledWith(
       null,
       "",
-      "http://localhost/?q=foo"
+      "http://localhost/?q=foo",
     );
   });
 
@@ -270,7 +353,7 @@ describe("AlertStore.filters", () => {
     expect(historyMock).toHaveBeenLastCalledWith(
       null,
       "",
-      "http://localhost/?q=bar"
+      "http://localhost/?q=bar",
     );
   });
 
@@ -287,7 +370,7 @@ describe("AlertStore.filters", () => {
     expect(historyMock).toHaveBeenLastCalledWith(
       null,
       "",
-      "http://localhost/?q=baz&q=far"
+      "http://localhost/?q=baz&q=far",
     );
   });
 
@@ -314,19 +397,6 @@ describe("AlertStore.filters", () => {
     const store = new AlertStore(["far"]);
     store.filters.setWithoutLocation([]);
     expect(store.filters.values).toHaveLength(0);
-  });
-});
-
-describe("FormatBackendURI", () => {
-  it("FormatBackendURI without REACT_APP_BACKEND_URI env returns ./ prefixed URIs", () => {
-    const uri = FormatBackendURI("foo/bar");
-    expect(uri).toEqual("./foo/bar");
-  });
-
-  it("FormatBackendURI with REACT_APP_BACKEND_URI env returns env value prefixed URIs", () => {
-    process.env.REACT_APP_BACKEND_URI = "http://localhost:1234";
-    const uri = FormatBackendURI("foo/bar");
-    expect(uri).toEqual("http://localhost:1234/foo/bar");
   });
 });
 
@@ -465,7 +535,7 @@ describe("AlertStore.fetch", () => {
 
     const store = new AlertStore(["label=value"]);
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
 
     expect(fetchMock.calls()).toHaveLength(1);
@@ -481,7 +551,7 @@ describe("AlertStore.fetch", () => {
 
     const store = new AlertStore([]);
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
 
     expect(fetchMock.calls()).toHaveLength(1);
@@ -500,7 +570,7 @@ describe("AlertStore.fetch", () => {
 
     const store = new AlertStore([]);
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toHaveProperty("error");
 
     expect(fetchMock.calls()).toHaveLength(10);
@@ -520,7 +590,7 @@ describe("AlertStore.fetch", () => {
     });
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toHaveProperty("error");
     expect(fetchMock.calls()).toHaveLength(10);
   });
@@ -535,7 +605,7 @@ describe("AlertStore.fetch", () => {
     });
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toHaveProperty("error");
     expect(fetchMock.calls()).toHaveLength(10);
 
@@ -546,7 +616,7 @@ describe("AlertStore.fetch", () => {
     });
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(fetchMock.calls()).toHaveLength(1);
 
@@ -556,7 +626,7 @@ describe("AlertStore.fetch", () => {
     });
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toHaveProperty("error");
     expect(fetchMock.calls()).toHaveLength(10);
   });
@@ -572,11 +642,11 @@ describe("AlertStore.fetch", () => {
           type: "opaque",
           body: "auth needed",
           json: jest.fn(() => EmptyAPIResponse()),
-        }) as any
+        }) as any,
     );
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
 
     expect(store.info.reloadNeeded).toBe(true);
@@ -593,7 +663,7 @@ describe("AlertStore.fetch", () => {
     });
 
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toHaveProperty("error");
     expect(store.filters.values[0].applied).toBe(true);
   });
@@ -610,7 +680,7 @@ describe("AlertStore.fetch", () => {
     // initial fetch, should update settings
     store.settings.setValues({ foo: "bar" } as any);
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(store.settings.values).toMatchObject({
       labels: {
@@ -627,7 +697,7 @@ describe("AlertStore.fetch", () => {
 
     // second fetch, should keep same settings
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(store.settings.values).toMatchObject({
       labels: {
@@ -651,7 +721,7 @@ describe("AlertStore.fetch", () => {
     });
     const store = new AlertStore(["label=value"]);
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(store.info.upgradeReady).toBe(false);
 
@@ -661,7 +731,7 @@ describe("AlertStore.fetch", () => {
       body: JSON.stringify(response),
     });
     await expect(
-      store.fetch("", false, "", "", false, {}, 5, {})
+      store.fetch("", false, "", "", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(store.info.upgradeReady).toBe(true);
   });
@@ -727,7 +797,7 @@ describe("AlertStore.fetch", () => {
     });
     const store = new AlertStore(["label=value"]);
     await expect(
-      store.fetch("", false, "sortOrder", "sortLabel", false, {}, 5, {})
+      store.fetch("", false, "sortOrder", "sortLabel", false, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(fetchMock.calls().length).toEqual(1);
     expect(fetchMock.calls()[0][0]).toBe("/alerts.json");
@@ -752,7 +822,7 @@ describe("AlertStore.fetch", () => {
     });
     const store = new AlertStore(["label=value"]);
     await expect(
-      store.fetch("cluster", true, "sortOrder", "sortLabel", true, {}, 5, {})
+      store.fetch("cluster", true, "sortOrder", "sortLabel", true, {}, 5, {}),
     ).resolves.toBeUndefined();
     expect(fetchMock.calls().length).toEqual(1);
     expect(fetchMock.calls()[0][0]).toBe("/alerts.json");
@@ -791,8 +861,8 @@ describe("AlertStore.fetch", () => {
           bar: 7,
         },
         5,
-        { "1234567890": 7, "1234567891": 1 }
-      )
+        { "1234567890": 7, "1234567891": 1 },
+      ),
     ).resolves.toBeUndefined();
     expect(fetchMock.calls().length).toEqual(1);
     expect(fetchMock.calls()[0][0]).toBe("/alerts.json");
@@ -848,8 +918,8 @@ describe("AlertStore.fetch", () => {
           bar: 7,
         },
         5,
-        { g1: 7, g2: 1, g4: 6 }
-      )
+        { g1: 7, g2: 1, g4: 6 },
+      ),
     ).resolves.toBeUndefined();
     expect(fetchMock.calls().length).toEqual(1);
     expect(fetchMock.calls()[0][0]).toBe("/alerts.json");

@@ -2,8 +2,8 @@ import { FC, useEffect, useState } from "react";
 
 import { observer } from "mobx-react-lite";
 
-import parseISO from "date-fns/parseISO";
-import getUnixTime from "date-fns/getUnixTime";
+import { parseISO } from "date-fns/parseISO";
+import { getUnixTime } from "date-fns/getUnixTime";
 
 import type { APISilenceT, APIAlertmanagerUpstreamT } from "Models/APITypes";
 import type { AlertStore } from "Stores/AlertStore";
@@ -13,7 +13,7 @@ import { SilenceDetails } from "./SilenceDetails";
 
 const GetAlertmanager = (
   alertStore: AlertStore,
-  cluster: string
+  cluster: string,
 ): APIAlertmanagerUpstreamT =>
   alertStore.data.readWriteAlertmanagers
     .filter((u) => u.cluster === cluster)
@@ -65,7 +65,7 @@ const ManagedSilence: FC<{
     };
 
     const [progress, setProgress] = useState<number>(
-      calculatePercent(silence.startsAt, silence.endsAt)
+      calculatePercent(silence.startsAt, silence.endsAt),
     );
 
     useEffect(() => {
@@ -76,7 +76,7 @@ const ManagedSilence: FC<{
     }, [silence.startsAt, silence.endsAt]);
 
     return (
-      <div className="card my-1 components-managed-silence">
+      <div className="card my-1 components-managed-silence w-100">
         <div className="card-header rounded-0 border-bottom-0 px-2">
           <SilenceComment
             alertStore={alertStore}
@@ -106,8 +106,8 @@ const ManagedSilence: FC<{
               progress > 90
                 ? "progress-bar bg-danger"
                 : progress > 75
-                ? "progress-bar bg-warning"
-                : "progress-bar bg-success"
+                  ? "progress-bar bg-warning"
+                  : "progress-bar bg-success"
             }
             role="progressbar"
             style={{ width: progress + "%" }}
@@ -118,7 +118,7 @@ const ManagedSilence: FC<{
         </div>
       </div>
     );
-  }
+  },
 );
 ManagedSilence.displayName = "ManagedSilence";
 

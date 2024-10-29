@@ -13,19 +13,22 @@ beforeEach(() => {
 const NonEqualMatchers = ["!=", "=~", "!~", ">", "<"];
 
 const MockColors = () => {
-  alertStore.data.colors["foo"] = {
-    bar: {
-      brightness: 200,
-      background: "rgba(4,5,6,200)",
+  alertStore.data.setColors({
+    foo: {
+      bar: {
+        brightness: 200,
+        background: "rgba(4,5,6,200)",
+      },
     },
-  };
+    ...alertStore.data.colors,
+  });
 };
 
 const ShallowLabel = (
   matcher: string,
   applied: boolean,
   valid: boolean,
-  hits: number
+  hits: number,
 ) => {
   const name = "foo";
   const value = "bar";
@@ -42,7 +45,7 @@ const ShallowLabel = (
 const ValidateClass = (
   matcher: string,
   applied: boolean,
-  expectedClass: string
+  expectedClass: string,
 ) => {
   const tree = ShallowLabel(matcher, applied, true, 1);
   expect(tree.props().className.split(" ")).toContain(expectedClass);
@@ -53,7 +56,7 @@ const ValidateOnChange = (newRaw: string) => {
     <FilterInputLabel
       alertStore={alertStore}
       filter={alertStore.filters.values[0]}
-    />
+    />,
   );
 
   const input = tree.find("InlineEdit");
@@ -156,7 +159,7 @@ describe("<FilterInputLabel /> onChange", () => {
     ValidateOnChange("baz=abc");
     expect(alertStore.filters.values).toHaveLength(1);
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("baz=abc")
+      NewUnappliedFilter("baz=abc"),
     );
   });
 
@@ -174,10 +177,10 @@ describe("<FilterInputLabel /> onChange", () => {
     ValidateOnChange("bar=baz");
     expect(alertStore.filters.values).toHaveLength(1);
     expect(alertStore.filters.values).not.toContainEqual(
-      NewUnappliedFilter("foo=bar")
+      NewUnappliedFilter("foo=bar"),
     );
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("bar=baz")
+      NewUnappliedFilter("bar=baz"),
     );
   });
 
@@ -190,14 +193,14 @@ describe("<FilterInputLabel /> onChange", () => {
       <FilterInputLabel
         alertStore={alertStore}
         filter={alertStore.filters.values[0]}
-      />
+      />,
     );
 
     const button = tree.find("svg.fa-xmark");
     button.simulate("click");
     expect(alertStore.filters.values).toHaveLength(1);
     expect(alertStore.filters.values).toContainEqual(
-      NewUnappliedFilter("bar=baz")
+      NewUnappliedFilter("bar=baz"),
     );
   });
 });
@@ -229,7 +232,7 @@ describe("<FilterInputLabel /> counter badge", () => {
       <FilterInputLabel
         alertStore={alertStore}
         filter={alertStore.filters.values[0]}
-      />
+      />,
     );
     const counter = tree.find(".rounded-pill");
     expect(counter).toHaveLength(0);
@@ -241,7 +244,7 @@ describe("<FilterInputLabel /> counter badge", () => {
       <FilterInputLabel
         alertStore={alertStore}
         filter={alertStore.filters.values[0]}
-      />
+      />,
     );
     const counter = tree.find(".rounded-pill");
     expect(counter).toHaveLength(1);
@@ -253,7 +256,7 @@ describe("<FilterInputLabel /> counter badge", () => {
       <FilterInputLabel
         alertStore={alertStore}
         filter={alertStore.filters.values[1]}
-      />
+      />,
     );
     const counter = tree.find(".rounded-pill");
     expect(counter).toHaveLength(1);

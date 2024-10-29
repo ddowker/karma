@@ -64,6 +64,7 @@ const EmptyAPIResponse = (): APIAlertsResponseT => ({
       strip: {
         labels: [],
       },
+      defaultAlertmanagers: [],
     },
     alertAcknowledgement: {
       enabled: false,
@@ -110,7 +111,7 @@ const MockAPIResponse = (): APIAlertsResponseT => {
                   value: "foo",
                 },
               ],
-              "suppressed"
+              "suppressed",
             ),
           ],
           [],
@@ -120,7 +121,7 @@ const MockAPIResponse = (): APIAlertsResponseT => {
               value: "dev",
             },
           ],
-          {}
+          {},
         ),
       ],
       totalGroups: 1,
@@ -137,7 +138,7 @@ const MockAPIResponse = (): APIAlertsResponseT => {
 
 const MockSilenceResponse = (
   cluster: string,
-  count: number
+  count: number,
 ): APIManagedSilenceT[] => {
   const silences: APIManagedSilenceT[] = [];
   for (let index = 1; index <= count; index++) {

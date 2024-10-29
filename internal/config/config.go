@@ -130,7 +130,8 @@ func SetupFlags(f *pflag.FlagSet) {
 		"List of receivers to not display alerts for")
 
 	f.Duration("silences.expired", time.Minute*10, "Maximum age of expired silences to show on active alerts")
-	f.StringSlice("silenceform.strip.labels", []string{}, "List of labels to ignore when auto-filling silence form from alerts")
+	f.StringSlice("silenceForm.strip.labels", []string{}, "List of labels to ignore when auto-filling silence form from alerts")
+	f.StringSlice("silenceForm.defaultAlertmanagers", []string{}, "List of Alertmanager names to use as default when creating a new silence")
 
 	f.String("listen.address", "", "IP/Hostname to listen on")
 	f.Int("listen.port", 8080, "HTTP port to listen on")
@@ -236,6 +237,8 @@ func readEnvVariables(k *koanf.Koanf) {
 			return "labels.valueOnly_re"
 		case "SILENCEFORM_STRIP_LABELS":
 			return "silenceForm.strip.labels"
+		case "SILENCEFORM_DEFAULTALERTMANAGERS":
+			return "silenceForm.defaultAlertmanagers"
 		case "UI_HIDEFILTERSWHENIDLE":
 			return "ui.hideFiltersWhenIdle"
 		case "UI_COLORTITLEBAR":

@@ -1,11 +1,9 @@
 /coverage.txt
 /karma
 /karma-*
-/ui/build
-/ui/build.pre
+/ui/dist
 /ui/coverage
 /ui/node_modules
 /ui/.eslintcache
-/ui/e2e/node_modules
 /TODO.md
 /.vscode

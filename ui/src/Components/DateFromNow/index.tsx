@@ -1,8 +1,8 @@
 import { FC, useState, useEffect } from "react";
 
-import parseISO from "date-fns/parseISO";
-import differenceInSeconds from "date-fns/differenceInSeconds";
-import formatDistanceToNowStrict from "date-fns/formatDistanceToNowStrict";
+import { parseISO } from "date-fns/parseISO";
+import { differenceInSeconds } from "date-fns/differenceInSeconds";
+import { formatDistanceToNowStrict } from "date-fns/formatDistanceToNowStrict";
 
 const formatLabel = (timestamp: string) => {
   const ts = parseISO(timestamp);
@@ -21,7 +21,7 @@ export const DateFromNow: FC<{ timestamp: string }> = ({ timestamp }) => {
   useEffect(() => {
     const timer = setInterval(
       () => setLabel(formatLabel(timestamp)),
-      30 * 1000
+      30 * 1000,
     );
     return () => clearInterval(timer);
   }, [timestamp]);

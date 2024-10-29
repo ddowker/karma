@@ -3,7 +3,7 @@ import { FC, useEffect, useState } from "react";
 import { toJS } from "mobx";
 import { observer } from "mobx-react-lite";
 
-import addSeconds from "date-fns/addSeconds";
+import { addSeconds } from "date-fns/addSeconds";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck } from "@fortawesome/free-solid-svg-icons/faCheck";
@@ -57,7 +57,7 @@ const AlertAck: FC<{
 
     if (alertStore.info.authentication.enabled) {
       silenceFormStore.data.setAuthor(
-        toJS(alertStore.info.authentication.username)
+        toJS(alertStore.info.authentication.username),
       );
       author = alertStore.info.authentication.username;
     }
@@ -66,19 +66,19 @@ const AlertAck: FC<{
       .filter(([_, alertCount]) => alertCount > 0)
       .map(([amName, _]) => amName);
     const clusters = Object.entries(
-      alertStore.data.clustersWithoutReadOnly
+      alertStore.data.clustersWithoutReadOnly,
     ).filter(([_, clusterMembers]) =>
-      alertmanagers.some((m) => clusterMembers.includes(m))
+      alertmanagers.some((m) => clusterMembers.includes(m)),
     );
 
     const c: ClusterT[] = [];
     for (const [clusterName, clusterMembers] of clusters) {
       const durationSeconds = toJS(
-        alertStore.settings.values.alertAcknowledgement.durationSeconds
+        alertStore.settings.values.alertAcknowledgement.durationSeconds,
       );
       const now = new Date();
       const comment = toJS(
-        alertStore.settings.values.alertAcknowledgement.comment
+        alertStore.settings.values.alertAcknowledgement.comment,
       )
         .replace("%NOW%", now.toUTCString())
         .replace("%NOWLOC%", now.toString());
@@ -88,7 +88,7 @@ const AlertAck: FC<{
           addSeconds(now, durationSeconds),
           MatchersFromGroup(group, [], true),
           author,
-          comment
+          comment,
         ),
         clusterName: clusterName,
         members: clusterMembers,
@@ -161,8 +161,8 @@ const AlertAck: FC<{
           !isAcking && error
             ? "bg-warning"
             : !isAcking && response
-            ? "bg-success"
-            : "bg-secondary"
+              ? "bg-success"
+              : "bg-secondary"
         }`}
         onClick={() => {
           if (!isAcking && !(response || error)) {

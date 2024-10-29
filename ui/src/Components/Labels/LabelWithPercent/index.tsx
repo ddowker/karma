@@ -22,19 +22,24 @@ const LabelWithPercent: FC<{
     (event: MouseEvent) => {
       // left click       => apply foo=bar filter
       // left click + alt => apply foo!=bar filter
-      const operator =
-        event.altKey === true ? QueryOperators.NotEqual : QueryOperators.Equal;
+      let operators = [QueryOperators.Equal, QueryOperators.NotEqual];
+      if (event.altKey) {
+        operators = operators.reverse();
+      }
 
       event.preventDefault();
 
-      alertStore.filters.addFilter(FormatQuery(name, operator, value));
+      alertStore.filters.replaceFilter(
+        FormatQuery(name, operators[1], value),
+        FormatQuery(name, operators[0], value),
+      );
     },
-    [alertStore.filters, name, value]
+    [alertStore.filters, name, value],
   );
 
   const removeFromFilters = () => {
     alertStore.filters.removeFilter(
-      FormatQuery(name, QueryOperators.Equal, value)
+      FormatQuery(name, QueryOperators.Equal, value),
     );
   };
 
@@ -42,7 +47,7 @@ const LabelWithPercent: FC<{
     alertStore,
     name,
     value,
-    "components-label-with-hover mb-0 ps-0 text-start"
+    "components-label-with-hover mb-0 ps-0 text-start",
   );
 
   const progressBarBg =

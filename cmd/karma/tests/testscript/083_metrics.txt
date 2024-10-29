@@ -1,12 +1,16 @@
 # GET /metrics returns same list of metrics
 
 exec bash -x ./test.sh &
-karma.bin-should-work --pid-file=karma.pid --alertmanager.uri=http://127.0.0.1 --listen.address=127.0.0.1 --listen.port=8083
+karma.bin-should-work --pid-file=karma.pid --alertmanager.uri=http://127.0.0.1:7083 --listen.address=127.0.0.1 --listen.port=8083
 ! stdout .
 cmp stderr stderr.txt
 cmp curl.txt metrics.txt
+wait
 
 -- metrics.txt --
+# HELP build_info Runtime version information
+# TYPE build_info gauge
+build_info{version="dev"}
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
 # TYPE go_gc_duration_seconds summary
 go_gc_duration_seconds{quantile="0"}
@@ -114,25 +118,25 @@ promhttp_metric_handler_requests_total{code="500"}
 promhttp_metric_handler_requests_total{code="503"}
 -- stderr.txt --
 level=info msg="Version: dev"
-level=info msg="Configured Alertmanager source" name=default proxy=false readonly=false uri=http://127.0.0.1
+level=info msg="Configured Alertmanager source" cluster=default name=default proxy=false readonly=false uri=http://127.0.0.1:7083
 level=info msg="Writing PID file" path=karma.pid
 level=info msg="Initial Alertmanager collection"
 level=info msg="Pulling latest alerts and silences from Alertmanager"
 level=info msg="Collecting alerts and silences" alertmanager=default
-level=info msg="GET request" timeout=40 uri=http://127.0.0.1/metrics
-level=error msg="Request failed" error="Get \"http://127.0.0.1/metrics\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default uri=http://127.0.0.1
-level=error msg="Collection failed" error="Get \"http://127.0.0.1/api/v2/status\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default try=1/2
-level=info msg="GET request" timeout=40 uri=http://127.0.0.1/metrics
-level=error msg="Request failed" error="Get \"http://127.0.0.1/metrics\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default uri=http://127.0.0.1
-level=error msg="Collection failed" error="Get \"http://127.0.0.1/api/v2/status\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default try=2/2
+level=info msg="GET request" timeout=40 uri=http://127.0.0.1:7083/metrics
+level=error msg="Request failed" error="Get \"http://127.0.0.1:7083/metrics\": dial tcp 127.0.0.1:7083: connect: connection refused" alertmanager=default uri=http://127.0.0.1:7083
+level=error msg="Collection failed" error="Get \"http://127.0.0.1:7083/api/v2/silences\": dial tcp 127.0.0.1:7083: connect: connection refused" alertmanager=default try=1/2
+level=info msg="GET request" timeout=40 uri=http://127.0.0.1:7083/metrics
+level=error msg="Request failed" error="Get \"http://127.0.0.1:7083/metrics\": dial tcp 127.0.0.1:7083: connect: connection refused" alertmanager=default uri=http://127.0.0.1:7083
+level=error msg="Collection failed" error="Get \"http://127.0.0.1:7083/api/v2/silences\": dial tcp 127.0.0.1:7083: connect: connection refused" alertmanager=default try=2/2
 level=info msg="Collection completed"
 level=info msg="Done, starting HTTP server"
 level=info msg="Starting HTTP server" address=127.0.0.1:8083
-level=info msg="Shutting down HTTP server"
+level=info msg="Shutting down HTTP server" signal=terminated
 level=info msg="HTTP server shut down"
 level=info msg="Removing PID file" path=karma.pid
 -- test.sh --
 while [ ! -f karma.pid ]; do sleep 1 ; done
 sleep 5
-curl -s http://localhost:8083/metrics | grep -vE 'process_|go_info' | perl -pe "s/^([a-zA-Z].+)[ ]([0-9\.\-\+eE]+)$/\1/g" > curl.txt
+curl -s http://127.0.0.1:8083/metrics | grep -vE 'process_|go_info' | perl -pe "s/^([a-zA-Z].+)[ ]([0-9\.\-\+eE]+)$/\1/g" > curl.txt
 cat karma.pid | xargs kill
