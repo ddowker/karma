@@ -4,10 +4,11 @@
 from collections import namedtuple
 import json
 import os
+import re
 import sys
 
 
-Bundle = namedtuple('Bundle' , 'seq ext bundleName totalBytes files')
+Bundle = namedtuple('Bundle' , 'bundleName totalBytes files')
 
 Diff = namedtuple('Diff', 'status path oldBytes newBytes isBigger diff')
 BundleDiff = namedtuple('BundleDiff', 'total files')
@@ -38,6 +39,10 @@ def normalizePath(path):
     return path
 
 
+def normalizeBundleName(path):
+    return re.sub(r'\-.{8}\.([a-zA-Z-])', r'.\1', path)
+
+
 def mergeFiles(allFiles):
     files = {}
     for path, meta in allFiles.items():
@@ -49,22 +54,43 @@ def mergeFiles(allFiles):
     return files
 
 
+def mergeSize(a, b):
+    for k,v in b.items():
+        if k in a:
+            a[k] += v
+        else:
+            a[k] = v
+    return a
+
+
+def mergeBundles(allBundles):
+    bundles = {}
+    for a in allBundles:
+        if a.bundleName not in bundles:
+            bundles[a.bundleName] = Bundle(
+                bundleName=a.bundleName,
+                totalBytes=0,
+                files={},
+            )
+        bundles[a.bundleName] = Bundle(
+            bundleName=a.bundleName,
+            totalBytes=bundles[a.bundleName].totalBytes + a.totalBytes,
+            files=mergeSize(bundles[a.bundleName].files, a.files),
+        )       
+    return bundles.values()
+
+
 def readBundle(path):
     bundles = []
     with open(path) as f:
         data = json.load(f)
         for result in data['results']:
-            filename = os.path.basename(result['bundleName'])
-            seq = filename.split('.')[0]
-            _, ext = os.path.splitext(filename)
             bundle = Bundle(
-                seq=seq,
-                ext=ext,
-                bundleName=result['bundleName'],
+                bundleName=normalizeBundleName(result['bundleName']),
                 totalBytes=result['totalBytes'],
                 files=mergeFiles(result['files']))
             bundles.append(bundle)
-    return bundles
+    return mergeBundles(bundles)
 
 
 def printRow(diff, element):
@@ -173,7 +199,7 @@ def diffBundles(a, b):
     for ba in a:
         found = False
         for bb in b:
-            if ba.seq == bb.seq and ba.ext == bb.ext:
+            if ba.bundleName == bb.bundleName:
                 found = True
                 d = diffBundle(ba, bb)
                 if d:
@@ -181,8 +207,6 @@ def diffBundles(a, b):
                 break
         if not found:
             bb = Bundle(
-                    seq=ba.seq,
-                    ext=ba.ext,
                     bundleName=ba.bundleName,
                     totalBytes=0,
                     files={}
@@ -194,12 +218,10 @@ def diffBundles(a, b):
     for bb in b:
         found = False
         for ba in a:
-            if bb.seq == ba.seq and ba.ext == bb.ext:
+            if ba.bundleName == bb.bundleName:
                 found = True
         if not found:
             ba = Bundle(
-                    seq=bb.seq,
-                    ext=bb.ext,
                     bundleName=bb.bundleName,
                     totalBytes=0,
                     files={}

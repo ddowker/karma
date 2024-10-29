@@ -4,6 +4,7 @@ exec bash -x ./test.sh &
 karma.bin-should-work --log.format=json --log.timestamp=false --pid-file=karma.pid --listen.address=127.0.0.1 --listen.port=8058
 ! stdout .
 cmp stderr stderr.txt
+wait
 
 -- stderr.txt --
 {"level":"info","message":"Version: dev"}
@@ -13,7 +14,7 @@ cmp stderr stderr.txt
 {"level":"info","message":"Collection completed"}
 {"level":"info","message":"Done, starting HTTP server"}
 {"level":"info","address":"127.0.0.1:8058","message":"Starting HTTP server"}
-{"level":"info","message":"Shutting down HTTP server"}
+{"level":"info","signal":"terminated","message":"Shutting down HTTP server"}
 {"level":"info","message":"HTTP server shut down"}
 {"level":"info","path":"karma.pid","message":"Removing PID file"}
 -- test.sh --

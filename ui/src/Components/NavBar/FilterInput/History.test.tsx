@@ -25,7 +25,7 @@ afterEach(() => {
 
 const MountedHistory = () => {
   return mount(
-    <History alertStore={alertStore} settingsStore={settingsStore} />
+    <History alertStore={alertStore} settingsStore={settingsStore} />,
   );
 };
 
@@ -130,7 +130,7 @@ describe("<HistoryMenu />", () => {
     const tree = MountedHistory();
     tree.find("button.cursor-pointer").simulate("click");
     expect(tree.text()).toBe(
-      "Last used filtersEmptySave filtersReset filtersClear history"
+      "Last used filtersEmptySave filtersReset filtersClear history",
     );
     await act(() => promise);
   });
@@ -144,7 +144,7 @@ describe("<HistoryMenu />", () => {
     tree.find("button.cursor-pointer").simulate("click");
 
     expect(tree.text()).toBe(
-      "Last used filtersfoo=bar1baz=~bar1Save filtersReset filtersClear history"
+      "Last used filtersfoo=bar1baz=~bar1Save filtersReset filtersClear history",
     );
 
     const labels = tree.find("Memo(HistoryLabel)");
@@ -269,26 +269,6 @@ describe("<HistoryMenu />", () => {
       jest.runOnlyPendingTimers();
     });
     expect(settingsStore.savedFilters.config.filters).toHaveLength(0);
-    await act(() => promise);
-  });
-
-  it("clicking on 'Clear history' clears the history", async () => {
-    const promise = Promise.resolve();
-    const tree = MountedHistory();
-    act(() => {
-      PopulateHistory(tree, 5);
-    });
-    tree.find("button.cursor-pointer").simulate("click");
-    expect(tree.find("button.dropdown-item")).toHaveLength(5);
-
-    const button = tree.find(".component-history-button").at(2);
-    expect(button.text()).toBe("Clear history");
-    button.simulate("click");
-    act(() => {
-      jest.runOnlyPendingTimers();
-    });
-    tree.update();
-    expect(tree.find("button.dropdown-item")).toHaveLength(0);
     await act(() => promise);
   });
 });

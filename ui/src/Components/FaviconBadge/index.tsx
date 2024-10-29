@@ -15,7 +15,7 @@ const FaviconBadge: FC<{
       position: "down",
       bgColor: "#e74c3c",
       textColor: "#fff",
-    })
+    }),
   );
 
   useEffect(
@@ -25,11 +25,11 @@ const FaviconBadge: FC<{
           alertStore.data.upstreamsWithErrors.length > 0
             ? "!"
             : alertStore.status.error === null
-            ? alertStore.info.totalAlerts
-            : "?"
+              ? alertStore.info.totalAlerts
+              : "?",
         );
       }),
-    [] // eslint-disable-line react-hooks/exhaustive-deps
+    [], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return null;

@@ -1,0 +1,66 @@
+http response prometheus /api/v1/labels 200 {"status":"success","data":["alertname"]}
+http response prometheus /api/v1/query_range 200 {"status":"success","data":{"resultType":"matrix","result":[{"metric":{},"values":[]}]}}
+http start prometheus 127.0.0.1:9111
+
+exec bash -x ./test.sh &
+karma.bin-should-work --pid-file=karma.pid --config.file=karma.yaml
+! stdout .
+cmp stderr stderr.txt
+wait
+
+-- stderr.txt --
+level=info msg="Reading configuration file" path=karma.yaml
+level=info msg="Version: dev"
+level=info msg="Configured Alertmanager source" cluster=default name=default proxy=false readonly=false uri=http://127.0.0.1
+level=info msg="Writing PID file" path=karma.pid
+level=info msg="Initial Alertmanager collection"
+level=info msg="Pulling latest alerts and silences from Alertmanager"
+level=info msg="Collecting alerts and silences" alertmanager=default
+level=info msg="GET request" timeout=40 uri=http://127.0.0.1/metrics
+level=error msg="Request failed" error="Get \"http://127.0.0.1/metrics\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default uri=http://127.0.0.1
+level=error msg="Collection failed" error="Get \"http://127.0.0.1/api/v2/silences\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default try=1/2
+level=info msg="GET request" timeout=40 uri=http://127.0.0.1/metrics
+level=error msg="Request failed" error="Get \"http://127.0.0.1/metrics\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default uri=http://127.0.0.1
+level=error msg="Collection failed" error="Get \"http://127.0.0.1/api/v2/silences\": dial tcp 127.0.0.1:80: connect: connection refused" alertmanager=default try=2/2
+level=info msg="Collection completed"
+level=info msg="Done, starting HTTP server"
+level=info msg="Starting HTTP server" address=127.0.0.1:8111
+level=warn msg="Error while configuring HTTP transport for history request" error="failed to create HTTP transport for 'http://127.0.0.1:9111': open /xxx/yyy/ca.pem: no such file or directory" uri=http://127.0.0.1:9111 worker=1
+level=info msg="Shutting down HTTP server" signal=terminated
+level=info msg="HTTP server shut down"
+level=info msg="Removing PID file" path=karma.pid
+-- karma.yaml --
+alertmanager:
+  servers:
+    - name: default
+      uri: http://127.0.0.1
+listen:
+  address: 127.0.0.1
+  port: 8111
+history:
+  enabled: true
+  workers: 1
+  timeout: 10s
+  rewrite:
+    - source: '(.*)'
+      uri: '$1'
+      tls:
+        ca: /xxx/yyy/ca.pem
+        insecureSkipVerify: true
+-- query.json --
+{
+    "sources": [
+        "http://127.0.0.1:9111",
+        "http://127.0.0.1:9111"
+    ],
+    "labels": {
+        "alertname": "Fake Alert"
+    }
+}
+-- test.sh --
+I=0
+while [ ! -f karma.pid ] && [ $I -lt 30 ]; do sleep 1; I=$((I+1)); done
+
+sleep 5
+curl -s -f -o /dev/null -XPOST -d @query.json http://127.0.0.1:8111/history.json
+cat karma.pid | xargs kill

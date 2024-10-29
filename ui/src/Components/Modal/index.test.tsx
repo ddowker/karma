@@ -26,28 +26,11 @@ const MountedModal = (isOpen: boolean, isUpper?: boolean) => {
   return mount(
     <Modal isOpen={isOpen} isUpper={isUpper || false} toggleOpen={fakeToggle}>
       <div />
-    </Modal>
+    </Modal>,
   );
 };
 
 describe("<ModalInner />", () => {
-  it("scroll isn't enabled if ref is null", () => {
-    const useRefSpy = jest.spyOn(React, "useRef").mockImplementation(() =>
-      Object.defineProperty({} as any, "current", {
-        get: () => null,
-        set: () => {},
-      })
-    );
-    const tree = mount(
-      <ModalInner size="modal-lg" isUpper toggleOpen={fakeToggle} />
-    );
-    tree.setProps({ isUpper: false });
-    tree.setProps({ isUpper: true });
-    tree.setProps({ isUpper: false });
-    expect(useRefSpy).toHaveBeenCalled();
-    expect(document.body.className.split(" ")).not.toContain("modal-open");
-  });
-
   it("'modal-open' class is appended to MountModal container", () => {
     const tree = MountedModal(true);
     expect(tree.find("div").at(0).hasClass("modal-open")).toBe(true);
@@ -115,7 +98,7 @@ describe("<ModalInner />", () => {
     const tree = mount(
       <Modal isOpen={true} toggleOpen={fakeToggle} onExited={onExited}>
         <div />
-      </Modal>
+      </Modal>,
     );
     const mountModal = tree.find("CSSTransition").at(0);
     expect((mountModal.props() as any).onExited).toBe(onExited);
@@ -130,11 +113,11 @@ describe("<ModalInner />", () => {
       {
         wrappingComponent: ThemeContext.Provider,
         wrappingComponentProps: { value: MockThemeContext },
-      }
+      },
     );
     const mountModal = tree.find("CSSTransition").at(0);
     expect((mountModal.props() as any).classNames).toBe(
-      "components-animation-modal"
+      "components-animation-modal",
     );
   });
 
@@ -147,7 +130,7 @@ describe("<ModalInner />", () => {
       {
         wrappingComponent: ThemeContext.Provider,
         wrappingComponentProps: { value: MockThemeContextWithoutAnimations },
-      }
+      },
     );
     const mountModal = tree.find("CSSTransition").at(0);
     expect((mountModal.props() as any).classNames).toBe("");
@@ -157,5 +140,22 @@ describe("<ModalInner />", () => {
     MountedModal(true);
     PressKey("Escape", 27);
     expect(fakeToggle).toHaveBeenCalled();
+  });
+
+  it("scroll isn't enabled if ref is null", () => {
+    const useRefSpy = jest.spyOn(React, "useRef").mockImplementation(() =>
+      Object.defineProperty({} as any, "current", {
+        get: () => null,
+        set: () => {},
+      }),
+    );
+    const tree = mount(
+      <ModalInner size="modal-lg" isUpper toggleOpen={fakeToggle} />,
+    );
+    tree.setProps({ isUpper: false });
+    tree.setProps({ isUpper: true });
+    tree.setProps({ isUpper: false });
+    expect(useRefSpy).toHaveBeenCalled();
+    expect(document.body.className.split(" ")).not.toContain("modal-open");
   });
 });

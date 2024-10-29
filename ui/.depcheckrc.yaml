@@ -6,15 +6,15 @@ ignores:
   - sass
   - typeface-open-sans
   - prettier
-  - react-scripts
+  - vite
   - typescript
   # devDeps
+  - "csstype"
   - "@types/jest"
   - "@types/node"
-  - "@percy/cli"
-  - "@percy/storybook"
-  - "@storybook/preset-create-react-app"
-  - "@storybook/builder-webpack5"
-  - "@storybook/manager-webpack5"
-  - "purgecss"
   - "eslint-plugin-jest"
+  - "node-fetch"
+  - identity-obj-proxy
+  - jest
+  - jest-fetch-mock
+  - terser

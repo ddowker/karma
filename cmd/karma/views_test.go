@@ -14,13 +14,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/beme/abide"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/prymitive/karma/internal/alertmanager"
 	"github.com/prymitive/karma/internal/config"
+	"github.com/prymitive/karma/internal/intern"
 	"github.com/prymitive/karma/internal/mock"
 	"github.com/prymitive/karma/internal/models"
 	"github.com/prymitive/karma/internal/regex"
@@ -61,6 +61,7 @@ func mockConfig(setenv setenvFunc) {
 
 func testRouter() *chi.Mux {
 	router := chi.NewRouter()
+	router.Use(proxyPathFixMiddleware)
 
 	err := loadTemplates()
 	if err != nil {
@@ -204,6 +205,7 @@ func TestIndex(t *testing.T) {
 			mockConfig(t.Setenv)
 			r := testRouter()
 			setupRouter(r, nil)
+			mockCache()
 			req := httptest.NewRequest("GET", tc.request, nil)
 			resp := httptest.NewRecorder()
 			r.ServeHTTP(resp, req)
@@ -222,7 +224,7 @@ func TestIndex(t *testing.T) {
 
 func mockCache() {
 	if apiCache == nil {
-		apiCache, _ = lru.New(100)
+		apiCache, _ = lru.New[string, []byte](100)
 	} else {
 		apiCache.Purge()
 	}
@@ -235,7 +237,6 @@ func mockAlerts(version string) {
 	mockCache()
 
 	mock.RegisterURL("http://localhost/metrics", version, "metrics")
-	mock.RegisterURL("http://localhost/api/v2/status", version, "api/v2/status")
 	mock.RegisterURL("http://localhost/api/v2/silences", version, "api/v2/silences")
 	mock.RegisterURL("http://localhost/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 
@@ -1066,15 +1067,43 @@ func TestSilences(t *testing.T) {
 }
 
 func TestCORS(t *testing.T) {
-	mockConfig(t.Setenv)
-	r := testRouter()
-	setupRouter(r, nil)
-	req := httptest.NewRequest("OPTIONS", "/alerts.json", nil)
-	req.Header.Set("Origin", "foo.example.com")
-	resp := httptest.NewRecorder()
-	r.ServeHTTP(resp, req)
-	if resp.Header().Get("Access-Control-Allow-Origin") != "foo.example.com" {
-		t.Errorf("Invalid Access-Control-Allow-Origin value %q, expected 'foo.example.com'", resp.Header().Get("Access-Control-Allow-Origin"))
+	type corsTestCase struct {
+		allowedOrigins []string
+		requestOrigin  string
+		result         string
+	}
+	corsTestCases := []corsTestCase{
+		{
+			allowedOrigins: []string{},
+			requestOrigin:  "foo.example.com",
+			result:         "foo.example.com",
+		},
+		{
+			allowedOrigins: []string{"bar.example.com"},
+			requestOrigin:  "foo.example.com",
+			result:         "",
+		},
+		{
+			allowedOrigins: []string{"bar.example.com"},
+			requestOrigin:  "bar.example.com",
+			result:         "bar.example.com",
+		},
+	}
+	for _, testCase := range corsTestCases {
+		mockConfig(t.Setenv)
+		defer func() {
+			config.Config.Listen.Cors.AllowedOrigins = nil
+		}()
+		config.Config.Listen.Cors.AllowedOrigins = testCase.allowedOrigins
+		r := testRouter()
+		setupRouter(r, nil)
+		req := httptest.NewRequest("OPTIONS", "/alerts.json", nil)
+		req.Header.Set("Origin", testCase.requestOrigin)
+		resp := httptest.NewRecorder()
+		r.ServeHTTP(resp, req)
+		if resp.Header().Get("Access-Control-Allow-Origin") != testCase.result {
+			t.Errorf("Invalid Access-Control-Allow-Origin value %q, expected '%q'", resp.Header().Get("Access-Control-Allow-Origin"), testCase.result)
+		}
 	}
 }
 
@@ -1122,6 +1151,7 @@ func TestEmptySettings(t *testing.T) {
 			Strip: models.SilenceFormStripSettings{
 				Labels: []string{},
 			},
+			DefaultAlertmanagers: []string{},
 		},
 		AlertAcknowledgement: models.AlertAcknowledgementSettings{
 			Enabled:         false,
@@ -1512,1262 +1542,6 @@ func TestInvalidBasicAuthHeader(t *testing.T) {
 	}
 }
 
-func TestUpstreamStatus(t *testing.T) {
-	zerolog.SetGlobalLevel(zerolog.FatalLevel)
-
-	type mockT struct {
-		uri  string
-		code int
-		body string
-	}
-
-	type testCaseT struct {
-		Name      string
-		mocks     []mockT
-		upstreams []config.AlertmanagerConfig
-		status    models.AlertmanagerAPISummary
-	}
-
-	testCases := []testCaseT{
-		{
-			Name: "404 from upstream",
-			mocks: []mockT{
-				{
-					uri:  "http://localhost:9093/metrics",
-					code: 404,
-					body: "not found",
-				},
-				{
-					uri:  "http://localhost:9093/api/v2/status",
-					code: 404,
-					body: "not found",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:        "default",
-					URI:         "http://localhost:9093",
-					ExternalURI: "http://example.com",
-					ReadOnly:    true,
-					Headers: map[string]string{
-						"X-Foo": "Bar",
-						"X-Bar": "Foo",
-					},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "include",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   1,
-					Healthy: 0,
-					Failed:  1,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:      "default",
-						URI:       "http://example.com",
-						PublicURI: "http://example.com",
-						ReadOnly:  true,
-						Headers: map[string]string{
-							"X-Foo": "Bar",
-							"X-Bar": "Foo",
-						},
-						CORSCredentials: "include",
-						Error:           `^response status code does not match any response statuses defined for this endpoint in the swagger spec \(status 404\): .+`,
-						Version:         "",
-						Cluster:         "default",
-						ClusterMembers:  []string{"default"},
-					},
-				},
-				Clusters: map[string][]string{
-					"default": {"default"},
-				},
-			},
-		},
-		{
-			Name: "HA Cluster",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-  "cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-		  {
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-  },
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Cluster:  "HA",
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Cluster:  "HA",
-					Name:     "ha2",
-					URI:      "http://ha2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 2,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "0.23.0",
-						Cluster:         "HA",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-					{
-						Name:            "ha2",
-						URI:             "http://ha2.example.com",
-						PublicURI:       "http://ha2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "0.22.0",
-						Cluster:         "HA",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"HA": {"ha1", "ha2"},
-				},
-			},
-		},
-		{
-			Name: "HA Cluster Without Name",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "same-site",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Name:     "ha2",
-					URI:      "http://ha2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "same-site",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 2,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "same-site",
-						Error:           "",
-						Version:         "0.23.0",
-						Cluster:         "ha1 | ha2",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-					{
-						Name:            "ha2",
-						URI:             "http://ha2.example.com",
-						PublicURI:       "http://ha2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "same-site",
-						Error:           "",
-						Version:         "0.22.0",
-						Cluster:         "ha1 | ha2",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"ha1 | ha2": {"ha1", "ha2"},
-				},
-			},
-		},
-		{
-			Name: "Broken Cluster",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-  "cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-		  {
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			}
-		],
-		"status": "ready"
-  },
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Cluster:  "Broken HA",
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Cluster:  "Broken HA",
-					Name:     "ha2",
-					URI:      "http://ha2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 2,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "missing cluster peers: ha2",
-						Version:         "0.23.0",
-						Cluster:         "Broken HA",
-						ClusterMembers:  []string{"ha1"},
-					},
-					{
-						Name:            "ha2",
-						URI:             "http://ha2.example.com",
-						PublicURI:       "http://ha2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "missing cluster peers: ha1",
-						Version:         "0.22.0",
-						Cluster:         "Broken HA",
-						ClusterMembers:  []string{"ha2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"Broken HA": {"ha1"},
-				},
-			},
-		},
-		{
-			Name: "Split Cluster Without Name",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Name:     "ha2",
-					URI:      "http://ha2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 2,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "0.23.0",
-						Cluster:         "ha1",
-						ClusterMembers:  []string{"ha1"},
-					},
-					{
-						Name:            "ha2",
-						URI:             "http://ha2.example.com",
-						PublicURI:       "http://ha2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "0.22.0",
-						Cluster:         "ha2",
-						ClusterMembers:  []string{"ha2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"ha1": {"ha1"},
-					"ha2": {"ha2"},
-				},
-			},
-		},
-		{
-			Name: "Broken Cluster Without Name",
-			mocks: []mockT{
-				{
-					uri:  "http://broken1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://broken2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://broken1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://broken2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://broken1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://broken1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://broken2.example.com/api/v2/alerts/groups",
-					code: 500,
-					body: "Internal Error\n",
-				},
-				{
-					uri:  "http://broken2.example.com/api/v2/silences",
-					code: 500,
-					body: "Internal Error\n",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:     "broken1",
-					URI:      "http://broken1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Name:     "broken2",
-					URI:      "http://broken2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 1,
-					Failed:  1,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "broken1",
-						URI:             "http://broken1.example.com",
-						PublicURI:       "http://broken1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "0.23.0",
-						Cluster:         "broken1 | broken2",
-						ClusterMembers:  []string{"broken1", "broken2"},
-					},
-					{
-						Name:            "broken2",
-						URI:             "http://broken2.example.com",
-						PublicURI:       "http://broken2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "invalid character 'I' looking for beginning of value",
-						Version:         "0.23.0",
-						Cluster:         "broken1 | broken2",
-						ClusterMembers:  []string{"broken1", "broken2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"broken1 | broken2": {"broken1", "broken2"},
-				},
-			},
-		},
-		{
-			Name: "Cluster with name and errors",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 500,
-					body: `Error`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.1"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.1:9095",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9095",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 500,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Cluster:  "Errors",
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Cluster:  "Errors",
-					Name:     "ha2",
-					URI:      "http://ha2.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "omit",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 1,
-					Failed:  1,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "",
-						Version:         "",
-						Cluster:         "Errors",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-					{
-						Name:            "ha2",
-						URI:             "http://ha2.example.com",
-						PublicURI:       "http://ha2.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "omit",
-						Error:           "json: cannot unmarshal array into Go value of type string",
-						Version:         "0.22.1",
-						Cluster:         "Errors",
-						ClusterMembers:  []string{"ha1", "ha2"},
-					},
-				},
-				Clusters: map[string][]string{
-					"Errors": {"ha1", "ha2"},
-				},
-			},
-		},
-		{
-			Name: "Single alertmanager from HA Cluster Without Name",
-			mocks: []mockT{
-				{
-					uri:  "http://ha1.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"} 1
-					`,
-				},
-				{
-					uri:  "http://ha2.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.0"} 1`,
-				},
-				{
-					uri:  "http://single.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.22.1"} 1
-					`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			},
-			{
-				"address": "10.16.0.2:9094",
-				"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://single.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "CCCCCCCCCCCCCCCCCCCCCCCCCC",
-		"peers": [
-			{
-				"address": "10.16.0.3:9094",
-				"name": "CCCCCCCCCCCCCCCCCCCCCCCCCC"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.22.1"
-	}
-}`,
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha1.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://ha2.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://single.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://single.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:     "ha1",
-					URI:      "http://ha1.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "same-site",
-					},
-					Timeout: time.Second * 10,
-				},
-				{
-					Name:     "single",
-					URI:      "http://single.example.com",
-					Proxy:    false,
-					ReadOnly: true,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "same-site",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   2,
-					Healthy: 2,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "ha1",
-						URI:             "http://ha1.example.com",
-						PublicURI:       "http://ha1.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "same-site",
-						Error:           "",
-						Version:         "0.23.0",
-						Cluster:         "ha1",
-						ClusterMembers:  []string{"ha1"},
-					},
-					{
-						Name:            "single",
-						URI:             "http://single.example.com",
-						PublicURI:       "http://single.example.com",
-						ReadOnly:        true,
-						Headers:         map[string]string{},
-						CORSCredentials: "same-site",
-						Error:           "",
-						Version:         "0.22.1",
-						Cluster:         "single",
-						ClusterMembers:  []string{"single"},
-					},
-				},
-				Clusters: map[string][]string{
-					"ha1":    {"ha1"},
-					"single": {"single"},
-				},
-			},
-		},
-		{
-			Name: "Single alertmanager with unparsable metrics",
-			mocks: []mockT{
-				{
-					uri:  "http://only.example.com/metrics",
-					code: 200,
-					body: `alertmanager_build_info{version="0.23.0"`,
-				},
-				{
-					uri:  "http://only.example.com/api/v2/status",
-					code: 200,
-					body: `{
-	"cluster": {
-		"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA",
-		"peers": [
-			{
-				"address": "10.16.0.1:9094",
-				"name": "AAAAAAAAAAAAAAAAAAAAAAAAAA"
-			}
-		],
-		"status": "ready"
-	},
-	"versionInfo": {
-		"version":"0.23.0"
-	}
-}`,
-				},
-				{
-					uri:  "http://only.example.com/api/v2/alerts/groups",
-					code: 200,
-					body: "[]",
-				},
-				{
-					uri:  "http://only.example.com/api/v2/silences",
-					code: 200,
-					body: "[]",
-				},
-			},
-			upstreams: []config.AlertmanagerConfig{
-				{
-					Name:     "only",
-					URI:      "http://only.example.com",
-					Proxy:    false,
-					ReadOnly: false,
-					Headers:  map[string]string{},
-					CORS: config.AlertmanagerCORS{
-						Credentials: "same-site",
-					},
-					Timeout: time.Second * 10,
-				},
-			},
-			status: models.AlertmanagerAPISummary{
-				Counters: models.AlertmanagerAPICounters{
-					Total:   1,
-					Healthy: 1,
-					Failed:  0,
-				},
-				Instances: []models.AlertmanagerAPIStatus{
-					{
-						Name:            "only",
-						URI:             "http://only.example.com",
-						PublicURI:       "http://only.example.com",
-						ReadOnly:        false,
-						Headers:         map[string]string{},
-						CORSCredentials: "same-site",
-						Error:           "",
-						Version:         "",
-						Cluster:         "only",
-						ClusterMembers:  []string{"only"},
-					},
-				},
-				Clusters: map[string][]string{
-					"only": {"only"},
-				},
-			},
-		},
-	}
-
-	payload, err := json.Marshal(models.AlertsRequest{
-		Filters: []string{
-			"@receiver=by-cluster-service",
-			"alertname=HTTP_Probe_Failed",
-			"instance=web1",
-		},
-		GridLimits:        map[string]int{},
-		DefaultGroupLimit: 5,
-	})
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.Name, func(t *testing.T) {
-			zerolog.SetGlobalLevel(zerolog.FatalLevel)
-
-			httpmock.Activate()
-			defer httpmock.DeactivateAndReset()
-
-			config.Config.Listen.Prefix = "/"
-			config.Config.Authentication.Header.Name = ""
-			config.Config.Authentication.BasicAuth.Users = []config.AuthenticationUser{}
-
-			apiCache, _ = lru.New(100)
-			alertmanager.UnregisterAll()
-			upstreamSetup = false
-			config.Config.Alertmanager.Servers = testCase.upstreams
-			err := setupUpstreams()
-			if err != nil {
-				t.Error(err)
-			}
-			r := testRouter()
-			setupRouter(r, nil)
-
-			httpmock.Reset()
-			for _, m := range testCase.mocks {
-				httpmock.RegisterResponder("GET", m.uri, httpmock.NewStringResponder(m.code, m.body))
-			}
-			pullFromAlertmanager()
-
-			req := httptest.NewRequest("POST", "/alerts.json", bytes.NewReader(payload))
-			resp := httptest.NewRecorder()
-			r.ServeHTTP(resp, req)
-			if resp.Code != http.StatusOK {
-				t.Errorf("POST /alerts.json returned status %d", resp.Code)
-			}
-
-			ur := models.AlertsResponse{}
-			err = json.Unmarshal(resp.Body.Bytes(), &ur)
-			if err != nil {
-				t.Errorf("Failed to unmarshal response: %s", err)
-			}
-			if diff := cmp.Diff(testCase.status, ur.Upstreams, cmp.Comparer(
-				func(x, y string) bool {
-					if strings.HasPrefix(x, "^") {
-						reX, err := regexp.Compile(x)
-						if err == nil {
-							return reX.MatchString(y)
-						}
-					}
-					if strings.HasPrefix(y, "^") {
-						reY, err := regexp.Compile(y)
-						if err == nil {
-							return reY.MatchString(x)
-						}
-					}
-					return x == y
-				}),
-			); diff != "" {
-				t.Errorf("Wrong upstream summary returned (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestGetUserFromContextMissing(t *testing.T) {
 	payload, err := json.Marshal(models.AlertsRequest{
 		Filters:           []string{},
@@ -2862,7 +1636,6 @@ func TestHealthcheckAlerts(t *testing.T) {
 				defer httpmock.DeactivateAndReset()
 				mockCache()
 				mock.RegisterURL("http://localhost/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 
@@ -2886,7 +1659,7 @@ func TestHealthcheckAlerts(t *testing.T) {
 					return
 				}
 
-				_ = am.Pull()
+				_ = am.Pull(intern.New())
 				hasError := am.Error() != ""
 				if hasError != testCase.hasError {
 					t.Errorf("error=%q expected=%v", am.Error(), testCase.hasError)
@@ -2946,8 +1719,13 @@ func TestAlertFilters(t *testing.T) {
 			t.Run(q, func(t *testing.T) {
 				t.Logf("Validating alerts.json response using mock files from Alertmanager %s", version)
 
+				httpmock.Reset()
 				httpmock.Activate()
 				defer httpmock.DeactivateAndReset()
+
+				config.Config.Listen.Prefix = "/"
+				config.Config.Authentication.Header.Name = ""
+				config.Config.Authentication.BasicAuth.Users = []config.AuthenticationUser{}
 
 				mockCache()
 
@@ -2955,7 +1733,6 @@ func TestAlertFilters(t *testing.T) {
 				upstreamSetup = false
 
 				mock.RegisterURL("http://localhost/c1a/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/c1a/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/c1a/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/c1a/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 				c1a, err := alertmanager.NewAlertmanager("cluster1", "c1a", "http://localhost/c1a")
@@ -2968,7 +1745,6 @@ func TestAlertFilters(t *testing.T) {
 				}
 
 				mock.RegisterURL("http://localhost/c1b/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/c1b/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/c1b/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/c1b/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 				c1b, err := alertmanager.NewAlertmanager("cluster1", "c1b", "http://localhost/c1b")
@@ -2981,7 +1757,6 @@ func TestAlertFilters(t *testing.T) {
 				}
 
 				mock.RegisterURL("http://localhost/c2a/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/c2a/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/c2a/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/c2a/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 				c2a, err := alertmanager.NewAlertmanager("cluster2", "c2a", "http://localhost/c2a")
@@ -3807,7 +2582,6 @@ func TestCounters(t *testing.T) {
 		t.Error(err)
 	}
 	mock.RegisterURL("http://localhost/1/metrics", version, "metrics")
-	mock.RegisterURL("http://localhost/1/api/v2/status", version, "api/v2/status")
 	mock.RegisterURL("http://localhost/1/api/v2/silences", version, "api/v2/silences")
 	mock.RegisterURL("http://localhost/1/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 	err = alertmanager.RegisterAlertmanager(am1)
@@ -3824,7 +2598,6 @@ func TestCounters(t *testing.T) {
 		t.Error(err)
 	}
 	mock.RegisterURL("http://localhost/2/metrics", version, "metrics")
-	mock.RegisterURL("http://localhost/2/api/v2/status", version, "api/v2/status")
 	mock.RegisterURL("http://localhost/2/api/v2/silences", version, "api/v2/silences")
 	mock.RegisterURL("http://localhost/2/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 	err = alertmanager.RegisterAlertmanager(am2)
@@ -3841,7 +2614,6 @@ func TestCounters(t *testing.T) {
 		t.Error(err)
 	}
 	mock.RegisterURL("http://localhost/3/metrics", version, "metrics")
-	mock.RegisterURL("http://localhost/3/api/v2/status", version, "api/v2/status")
 	mock.RegisterURL("http://localhost/3/api/v2/silences", version, "api/v2/silences")
 	mock.RegisterURL("http://localhost/3/api/v2/alerts/groups", version, "api/v2/alerts/groups")
 	err = alertmanager.RegisterAlertmanager(am3)

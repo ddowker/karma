@@ -2,7 +2,7 @@ import { FC, useState } from "react";
 
 import { observer } from "mobx-react-lite";
 
-import parseISO from "date-fns/parseISO";
+import { parseISO } from "date-fns/parseISO";
 
 import copy from "copy-to-clipboard";
 
@@ -75,7 +75,7 @@ const SilenceDetails: FC<{
     }
 
     const alertmanagers = alertStore.data.upstreams.instances.filter(
-      (u) => u.cluster === cluster
+      (u) => u.cluster === cluster,
     );
 
     const isReadOnly =
@@ -197,7 +197,7 @@ const SilenceDetails: FC<{
         </div>
       </div>
     );
-  }
+  },
 );
 SilenceDetails.displayName = "SilenceDetails";
 

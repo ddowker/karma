@@ -11,8 +11,8 @@ const MatcherToFilter = (matcher: MatcherT): string => {
     v.wasCreated
       ? v
       : matcher.isRegex
-      ? { ...v, value: EscapeRegex(v.value) }
-      : v
+        ? { ...v, value: EscapeRegex(v.value) }
+        : v,
   );
   const value =
     values.length > 1
@@ -21,18 +21,18 @@ const MatcherToFilter = (matcher: MatcherT): string => {
   return FormatQuery(
     matcher.name,
     MatcherToOperator(matcher),
-    matcher.isRegex ? `^${value}$` : value
+    matcher.isRegex ? `^${value}$` : value,
   );
 };
 
 const AlertManagersToFilter = (alertmanagers: MultiValueOptionT[]): string => {
   const amNames: string[] = ([] as string[]).concat(
-    ...alertmanagers.map((am) => am.value)
+    ...alertmanagers.map((am) => am.value),
   );
   return FormatQuery(
     StaticLabels.AlertManager,
     QueryOperators.Regex,
-    `^(${amNames.join("|")})$`
+    `^(${amNames.join("|")})$`,
   );
 };
 

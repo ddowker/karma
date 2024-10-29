@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/jarcoal/httpmock"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rs/zerolog"
 
 	"github.com/prymitive/karma/internal/alertmanager"
 	"github.com/prymitive/karma/internal/config"
+	"github.com/prymitive/karma/internal/intern"
 	"github.com/prymitive/karma/internal/mock"
 )
 
@@ -39,60 +40,6 @@ func (c *closeNotifyingRecorder) CloseNotify() <-chan bool {
 	return c.closed
 }
 
-type proxyTest struct {
-	method      string
-	localPath   string
-	upstreamURI string
-	code        int
-	response    string
-}
-
-var proxyTests = []proxyTest{
-	// valid alertmanager and methods
-	{
-		method:      "POST",
-		localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silences",
-		upstreamURI: "http://localhost:9093/api/v2/silences",
-		code:        200,
-		response:    "{\"status\":\"success\",\"data\":{\"silenceId\":\"d8a61ca8-ee2e-4076-999f-276f1e986bf3\"}}",
-	},
-	{
-		method:      "DELETE",
-		localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		code:        200,
-		response:    "{\"status\":\"success\"}",
-	},
-	// invalid alertmanager name
-	{
-		method:      "POST",
-		localPath:   "/proxy/alertmanager/INVALID/api/v2/silences",
-		upstreamURI: "",
-		code:        404,
-		response:    "404 page not found\n",
-	},
-	{
-		method:      "DELETE",
-		localPath:   "/proxy/alertmanager/INVALID/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		code:        404,
-		response:    "404 page not found\n",
-	},
-	// valid alertmanager name, but invalid method
-	{
-		method:      "GET",
-		localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silences",
-		upstreamURI: "",
-		code:        405,
-	},
-	{
-		method:      "GET",
-		localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
-		code:        405,
-	},
-}
-
 func TestProxy(t *testing.T) {
 	dummySilence := `{
 	"comment": "comment",
@@ -104,40 +51,127 @@ func TestProxy(t *testing.T) {
 
 	config.Config.Listen.Prefix = ""
 
-	r := testRouter()
-	am, err := alertmanager.NewAlertmanager(
-		"cluster",
-		"dummy with (space)",
-		"http://localhost:9093",
-		alertmanager.WithRequestTimeout(time.Second*5),
-		alertmanager.WithProxy(true),
-	)
-	if err != nil {
-		t.Error(err)
+	type proxyTest struct {
+		amName      string
+		amCluster   string
+		amURI       string
+		method      string
+		localPath   string
+		upstreamURI string
+		code        int
+		response    string
 	}
 
-	setupRouterProxyHandlers(r, am)
-
-	httpmock.Activate()
-	defer httpmock.DeactivateAndReset()
+	proxyTests := []proxyTest{
+		// valid alertmanager and methods
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "POST",
+			localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silences",
+			upstreamURI: "http://localhost:9093/api/v2/silences",
+			code:        200,
+			response:    "{\"status\":\"success\",\"data\":{\"silenceId\":\"d8a61ca8-ee2e-4076-999f-276f1e986bf3\"}}",
+		},
+		{
+			amCluster:   "cluster",
+			amName:      "ha/1",
+			amURI:       "http://localhost:9093",
+			method:      "POST",
+			localPath:   "/proxy/alertmanager/ha%2F1/api/v2/silences",
+			upstreamURI: "http://localhost:9093/api/v2/silences",
+			code:        200,
+			response:    "{\"status\":\"success\",\"data\":{\"silenceId\":\"d8a61ca8-ee2e-4076-999f-276f1e986bf3\"}}",
+		},
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "DELETE",
+			localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			code:        200,
+			response:    "{\"status\":\"success\"}",
+		},
+		// invalid alertmanager name
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "POST",
+			localPath:   "/proxy/alertmanager/INVALID/api/v2/silences",
+			upstreamURI: "",
+			code:        404,
+			response:    "404 page not found\n",
+		},
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "DELETE",
+			localPath:   "/proxy/alertmanager/INVALID/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			code:        404,
+			response:    "404 page not found\n",
+		},
+		// valid alertmanager name, but invalid method
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "GET",
+			localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silences",
+			upstreamURI: "",
+			code:        405,
+		},
+		{
+			amCluster:   "cluster",
+			amName:      "dummy with (space)",
+			amURI:       "http://localhost:9093",
+			method:      "GET",
+			localPath:   "/proxy/alertmanager/dummy%20with%20%28space%29/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			upstreamURI: "http://localhost:9093/api/v2/silence/d8a61ca8-ee2e-4076-999f-276f1e986bf3",
+			code:        405,
+		},
+	}
 
 	for _, testCase := range proxyTests {
-		httpmock.Reset()
-		if testCase.upstreamURI != "" {
-			httpmock.RegisterResponder(testCase.method, testCase.upstreamURI, httpmock.NewStringResponder(testCase.code, testCase.response))
-		}
-		req := httptest.NewRequest(testCase.method, testCase.localPath, strings.NewReader(dummySilence))
-		resp := newCloseNotifyingRecorder()
-		r.ServeHTTP(resp, req)
-		if resp.Code != testCase.code {
-			t.Errorf("%s %s proxied to %s returned status %d while %d was expected",
-				testCase.method, testCase.localPath, testCase.upstreamURI, resp.Code, testCase.code)
-		}
-		body := resp.Body.String()
-		if body != testCase.response {
-			t.Errorf("%s %s proxied to %s returned content '%s' while '%s' was expected",
-				testCase.method, testCase.localPath, testCase.upstreamURI, body, testCase.response)
-		}
+		t.Run(testCase.amName, func(t *testing.T) {
+			httpmock.Activate()
+			defer httpmock.DeactivateAndReset()
+
+			am, err := alertmanager.NewAlertmanager(
+				testCase.amCluster,
+				testCase.amName,
+				testCase.amURI,
+				alertmanager.WithRequestTimeout(time.Second*5),
+				alertmanager.WithProxy(true),
+			)
+			if err != nil {
+				t.Error(err)
+			}
+			t.Logf("InternalURI: %s", am.InternalURI())
+
+			r := testRouter()
+			setupRouterProxyHandlers(r, am)
+
+			if testCase.upstreamURI != "" {
+				httpmock.RegisterResponder(testCase.method, testCase.upstreamURI, httpmock.NewStringResponder(testCase.code, testCase.response))
+			}
+			req := httptest.NewRequest(testCase.method, testCase.localPath, strings.NewReader(dummySilence))
+			resp := newCloseNotifyingRecorder()
+			r.ServeHTTP(resp, req)
+			if resp.Code != testCase.code {
+				t.Errorf("%s %s proxied to %s returned status %d while %d was expected",
+					testCase.method, testCase.localPath, testCase.upstreamURI, resp.Code, testCase.code)
+			}
+			body := resp.Body.String()
+			if body != testCase.response {
+				t.Errorf("%s %s proxied to %s returned content '%s' while '%s' was expected",
+					testCase.method, testCase.localPath, testCase.upstreamURI, body, testCase.response)
+			}
+		})
 	}
 }
 
@@ -336,7 +370,7 @@ func TestProxyToSubURIAlertmanager(t *testing.T) {
 			}
 			setupRouterProxyHandlers(r, am)
 
-			httpmock.RegisterResponder("POST", "http://alertmanager.example.com/suburi/api/v2/silences", func(req *http.Request) (*http.Response, error) {
+			httpmock.RegisterResponder("POST", "http://alertmanager.example.com/suburi/api/v2/silences", func(_ *http.Request) (*http.Response, error) {
 				return httpmock.NewStringResponse(200, "ok"), nil
 			})
 
@@ -526,13 +560,12 @@ func TestProxyUserRewrite(t *testing.T) {
 				setupRouter(r, nil)
 				setupRouterProxyHandlers(r, am)
 
-				apiCache, _ = lru.New(100)
+				apiCache, _ = lru.New[string, []byte](100)
 				httpmock.Reset()
 				mock.RegisterURL("http://localhost/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/api/v2/alerts/groups", version, "api/v2/alerts/groups")
-				_ = am.Pull()
+				_ = am.Pull(intern.New())
 
 				httpmock.RegisterResponder("POST", "http://localhost/api/v2/silences", func(req *http.Request) (*http.Response, error) {
 					body, _ := io.ReadAll(req.Body)
@@ -1300,13 +1333,12 @@ func TestProxySilenceACL(t *testing.T) {
 				}
 				setupRouterProxyHandlers(r, am)
 
-				apiCache, _ = lru.New(100)
+				apiCache, _ = lru.New[string, []byte](100)
 				httpmock.Reset()
 				mock.RegisterURL("http://localhost/metrics", version, "metrics")
-				mock.RegisterURL("http://localhost/api/v2/status", version, "api/v2/status")
 				mock.RegisterURL("http://localhost/api/v2/silences", version, "api/v2/silences")
 				mock.RegisterURL("http://localhost/api/v2/alerts/groups", version, "api/v2/alerts/groups")
-				_ = am.Pull()
+				_ = am.Pull(intern.New())
 
 				httpmock.RegisterResponder("POST", "http://localhost/api/v2/silences", func(req *http.Request) (*http.Response, error) {
 					body, _ := io.ReadAll(req.Body)
@@ -1328,7 +1360,7 @@ func TestProxySilenceACL(t *testing.T) {
 
 type errReader int
 
-func (errReader) Read(p []byte) (n int, err error) {
+func (errReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("request read error")
 }
 
@@ -1394,21 +1426,14 @@ func TestProxyRequestToUnsupportedAlertmanager(t *testing.T) {
 	}
 	setupRouterProxyHandlers(r, am)
 
-	apiCache, _ = lru.New(100)
+	apiCache, _ = lru.New[string, []byte](100)
 	httpmock.Reset()
 	httpmock.RegisterResponder("GET", "http://localhost/metrics", httpmock.NewStringResponder(200, `alertmanager_build_info{version="0.1.0"} 1
 	`))
-	httpmock.RegisterResponder("GET", "http://localhost/api/v2/status", httpmock.NewStringResponder(200, `{
-		"cluster": {
-			"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-			"peers": [],
-			"status": "ready"
-		}
-	}`))
 	httpmock.RegisterResponder("POST", "http://localhost/api/v2/silences", httpmock.NewStringResponder(200, "{}"))
 	httpmock.RegisterResponder("GET", "http://localhost/api/v2/silences", httpmock.NewStringResponder(200, "[]"))
 	httpmock.RegisterResponder("GET", "http://localhost/api/v2/alerts/groups", httpmock.NewStringResponder(200, "[]"))
-	_ = am.Pull()
+	_ = am.Pull(intern.New())
 
 	if ver := am.Version(); ver != "0.1.0" {
 		t.Errorf("Got wrong version: %q", ver)

@@ -10,10 +10,10 @@ on:
 jobs:
   version-sync:
     name: Synchronise node-version
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Get Node version from Dockerfile
         run: |
@@ -22,22 +22,18 @@ jobs:
       - name: Synchronise Node version in actions
         run: |
           sed -i -E s/'([\ \t]+)node-version: .+'/'\1node-version: ${{ env.NODE_VERSION }}'/g .github/workflows/*
-          sed -i -E s/'([\ \t]+)"node": .+'/'\1"node": "${{ env.NODE_VERSION }}"'/g ui/package.json ui/*/package.json
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
+          node-version: 21.7.1
 
       - name: Regenerate ui package-lock.json
         run: cd ui && npm i
 
-      - name: Regenerate e2e package-lock.json
-        run: cd ui/e2e && npm i
-
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v4.0.4
+        uses: peter-evans/create-pull-request@v6.0.2
         with:
           token: ${{ secrets.GH_REPO_TOKEN }}
           author: "Łukasz Mierzwa <l.mierzwa@gmail.com>"
@@ -53,8 +49,6 @@ jobs:
 
       - name: Enable Pull Request Automerge
         if: steps.cpr.outputs.pull-request-operation == 'created'
-        uses: peter-evans/enable-pull-request-automerge@v2.1.0
-        with:
-          token: ${{ secrets.GH_REPO_TOKEN }}
-          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
-          merge-method: rebase
+        run: gh pr merge --merge --auto version-sync-node
+        env:
+          GH_TOKEN: ${{ secrets.GH_REPO_TOKEN }}

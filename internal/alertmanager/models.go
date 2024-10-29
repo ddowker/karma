@@ -5,15 +5,14 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/prymitive/karma/internal/config"
 	"github.com/prymitive/karma/internal/filters"
+	"github.com/prymitive/karma/internal/intern"
 	"github.com/prymitive/karma/internal/mapper"
 	"github.com/prymitive/karma/internal/models"
-	"github.com/prymitive/karma/internal/slices"
 	"github.com/prymitive/karma/internal/transform"
 	"github.com/prymitive/karma/internal/uri"
 	"github.com/prymitive/karma/internal/verprobe"
@@ -62,8 +61,6 @@ type Alertmanager struct {
 	knownLabels      []string
 	lastError        string
 	lastVersionProbe string
-	status           models.AlertmanagerStatus
-	clusterName      string
 	// metrics tracked per alertmanager instance
 	Metrics alertmanagerMetrics
 	// headers to send with each AlertManager request
@@ -108,22 +105,6 @@ func (am *Alertmanager) probeVersion() string {
 	return version
 }
 
-func (am *Alertmanager) fetchStatus(version string) (*models.AlertmanagerStatus, error) {
-	mapper, err := mapper.GetStatusMapper(version)
-	if err != nil {
-		return nil, err
-	}
-
-	var status models.AlertmanagerStatus
-
-	status, err = mapper.Collect(am.URI, am.HTTPHeaders, am.RequestTimeout, am.HTTPTransport)
-	if err != nil {
-		return nil, err
-	}
-
-	return &status, nil
-}
-
 func (am *Alertmanager) clearData() {
 	am.lock.Lock()
 	am.alertGroups = []models.AlertGroup{}
@@ -134,16 +115,7 @@ func (am *Alertmanager) clearData() {
 	am.lock.Unlock()
 }
 
-func (am *Alertmanager) clearStatus() {
-	am.lock.Lock()
-	am.status = models.AlertmanagerStatus{
-		ID:      "",
-		PeerIDs: []string{},
-	}
-	am.lock.Unlock()
-}
-
-func (am *Alertmanager) pullSilences(version string) error {
+func (am *Alertmanager) pullSilences(version string, si *intern.Interner) error {
 	mapper, err := mapper.GetSilenceMapper(version)
 	if err != nil {
 		return err
@@ -152,7 +124,7 @@ func (am *Alertmanager) pullSilences(version string) error {
 	var silences []models.Silence
 
 	start := time.Now()
-	silences, err = mapper.Collect(am.URI, am.HTTPHeaders, am.RequestTimeout, am.HTTPTransport)
+	silences, err = mapper.Collect(si, am.URI, am.HTTPHeaders, am.RequestTimeout, am.HTTPTransport)
 	if err != nil {
 		return err
 	}
@@ -200,7 +172,7 @@ func (am *Alertmanager) PublicURI() string {
 	return am.URI
 }
 
-func (am *Alertmanager) pullAlerts(version string) error {
+func (am *Alertmanager) pullAlerts(version string, si *intern.Interner) error {
 	mapper, err := mapper.GetAlertMapper(version)
 	if err != nil {
 		return err
@@ -219,7 +191,7 @@ func (am *Alertmanager) pullAlerts(version string) error {
 	var groups []models.AlertGroup
 
 	start := time.Now()
-	groups, err = mapper.Collect(am.URI, am.HTTPHeaders, am.RequestTimeout, am.HTTPTransport)
+	groups, err = mapper.Collect(si, am.URI, am.HTTPHeaders, am.RequestTimeout, am.HTTPTransport)
 	if err != nil {
 		return err
 	}
@@ -270,7 +242,7 @@ func (am *Alertmanager) pullAlerts(version string) error {
 
 	dedupedGroups := make([]models.AlertGroup, 0, len(uniqueGroups))
 	colors := models.LabelsColorMap{}
-	autocompleteMap := map[string]models.Autocomplete{}
+	autocompleteMap := map[string]*models.Autocomplete{}
 
 	log.Info().
 		Str("alertmanager", am.Name).
@@ -311,7 +283,7 @@ func (am *Alertmanager) pullAlerts(version string) error {
 				{
 					Fingerprint: alert.Fingerprint,
 					Name:        am.Name,
-					Cluster:     am.ClusterName(),
+					Cluster:     am.Cluster,
 					State:       alert.State,
 					StartsAt:    alert.StartsAt,
 					Source:      alert.GeneratorURL,
@@ -335,7 +307,8 @@ func (am *Alertmanager) pullAlerts(version string) error {
 		}
 
 		for _, hint := range filters.BuildAutocomplete(alerts) {
-			autocompleteMap[hint.Value] = hint
+			hint := hint
+			autocompleteMap[hint.Value] = &hint
 		}
 
 		sort.Sort(&alerts)
@@ -353,7 +326,7 @@ func (am *Alertmanager) pullAlerts(version string) error {
 		Msg("Merging autocomplete hints")
 	autocomplete := make([]models.Autocomplete, 0, len(autocompleteMap))
 	for _, hint := range autocompleteMap {
-		autocomplete = append(autocomplete, hint)
+		autocomplete = append(autocomplete, *hint)
 	}
 
 	knownLabels := make([]string, 0, len(knownLabelsMap))
@@ -373,7 +346,7 @@ func (am *Alertmanager) pullAlerts(version string) error {
 }
 
 // Pull data from upstream Alertmanager instance
-func (am *Alertmanager) Pull() error {
+func (am *Alertmanager) Pull(si *intern.Interner) error {
 	am.Metrics.Cycles++
 
 	version := am.probeVersion()
@@ -389,19 +362,7 @@ func (am *Alertmanager) Pull() error {
 		return err
 	}
 
-	status, err := am.fetchStatus(version)
-	if err != nil {
-		am.clearData()
-		am.clearStatus()
-		am.setError(err.Error())
-		am.Metrics.Errors[labelValueErrorsSilences]++
-		return err
-	}
-	am.lock.Lock()
-	am.status = *status
-	am.lock.Unlock()
-
-	err = am.pullSilences(version)
+	err = am.pullSilences(version, si)
 	if err != nil {
 		am.clearData()
 		am.setError(err.Error())
@@ -409,7 +370,7 @@ func (am *Alertmanager) Pull() error {
 		return err
 	}
 
-	err = am.pullAlerts(version)
+	err = am.pullAlerts(version, si)
 	if err != nil {
 		am.clearData()
 		am.setError(err.Error())
@@ -419,7 +380,6 @@ func (am *Alertmanager) Pull() error {
 
 	am.lock.Lock()
 	am.lastError = ""
-	am.clusterName = ""
 	am.lock.Unlock()
 
 	failedHc := []string{}
@@ -476,8 +436,8 @@ func (am *Alertmanager) ExpiredSilences(labels map[string]string) (silences []*m
 	now := time.Now()
 	maxExpired := now.Add(-config.Config.Silences.Expired)
 	for _, silence := range am.silences {
-		silence := silence
 		if silence.EndsAt.Before(now) && !silence.EndsAt.Before(maxExpired) && silence.IsMatch(labels) {
+			silence := silence
 			silences = append(silences, &silence)
 		}
 	}
@@ -535,26 +495,7 @@ func (am *Alertmanager) getLastError() string {
 }
 
 func (am *Alertmanager) Error() string {
-	lastError := am.getLastError()
-	if lastError != "" {
-		return lastError
-	}
-
-	configPeers := clusterMembersFromConfig(am)
-	apiPeers := clusterMembersFromAPI(am)
-	missing, _ := slices.StringSliceDiff(configPeers, apiPeers)
-
-	if len(missing) > 0 {
-		log.Debug().
-			Str("alertmanager", am.Name).
-			Strs("configured", configPeers).
-			Strs("api", apiPeers).
-			Strs("missing", missing).
-			Msg("Cluster peers mismatch")
-		return fmt.Sprintf("missing cluster peers: %s", strings.Join(missing, ", "))
-	}
-
-	return ""
+	return am.getLastError()
 }
 
 // SanitizedURI returns a copy of Alertmanager.URI with password replaced by
@@ -571,27 +512,10 @@ func (am *Alertmanager) Version() string {
 	return am.lastVersionProbe
 }
 
-// ClusterPeers returns a list of IDs of all peers this instance
-// is connected to.
-// IDs are the same as in Alertmanager API.
-func (am *Alertmanager) ClusterPeers() []string {
-	am.lock.RLock()
-	defer am.lock.RUnlock()
-
-	return am.status.PeerIDs
-}
-
 // ClusterMemberNames returns a list of names of all Alertmanager instances
 // that are in the same cluster as this instance (including self).
 // Names are the same as in karma configuration.
 func (am *Alertmanager) ClusterMemberNames() []string {
-	// copy status so we don't need to hold RLock until return
-	status := models.AlertmanagerStatus{}
-	am.lock.RLock()
-	status.ID = am.status.ID
-	copy(am.status.PeerIDs, status.PeerIDs)
-	am.lock.RUnlock()
-
 	members := []string{am.Name}
 
 	upstreams := GetAlertmanagers()
@@ -600,39 +524,13 @@ func (am *Alertmanager) ClusterMemberNames() []string {
 		if upstream.Name == am.Name {
 			continue
 		}
-		for _, peerID := range upstream.ClusterPeers() {
-			// IF
-			// other alertmanagers peerID is in this alertmanager cluster status
-			// OR
-			// this alertmanager peerID is in other alertmanagers cluster status
-			if slices.StringInSlice(status.PeerIDs, peerID) || peerID == status.ID {
-				if !slices.StringInSlice(members, upstream.Name) {
-					members = append(members, upstream.Name)
-				}
-			}
+		if upstream.Cluster != "" && upstream.Cluster == am.Cluster {
+			members = append(members, upstream.Name)
 		}
 	}
 
 	sort.Strings(members)
 	return members
-}
-
-func (am *Alertmanager) ClusterName() string {
-	am.lock.RLock()
-	if am.clusterName != "" {
-		am.lock.RUnlock()
-		return am.clusterName
-	}
-	am.lock.RUnlock()
-
-	var clusterName string
-	if am.Cluster != "" {
-		clusterName = am.Cluster
-	} else {
-		clusterName = strings.Join(am.ClusterMemberNames(), " | ")
-	}
-	am.clusterName = clusterName
-	return clusterName
 }
 
 func (am *Alertmanager) IsHealthy() bool {

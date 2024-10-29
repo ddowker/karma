@@ -1,6 +1,9 @@
 import { mount } from "enzyme";
 
+import fetchMock from "fetch-mock";
+
 import { mockMatchMedia } from "__fixtures__/matchMedia";
+import { EmptyAPIResponse } from "__fixtures__/Fetch";
 import type { UIDefaults, ThemeT } from "Models/UI";
 import { SilenceFormStore, NewEmptyMatcher } from "Stores/SilenceFormStore";
 import { StringToOption } from "Common/Select";
@@ -35,6 +38,11 @@ beforeEach(() => {
     disconnect: jest.fn(),
   }));
   global.ResizeObserverEntry = jest.fn();
+
+  fetchMock.reset();
+  fetchMock.mock("*", {
+    body: JSON.stringify(EmptyAPIResponse()),
+  });
 });
 
 afterEach(() => {
@@ -60,11 +68,11 @@ describe("<App />", () => {
       JSON.stringify({
         filters: ["bar=baz", "abc!=cba"],
         present: true,
-      })
+      }),
     );
 
     // https://github.com/facebook/jest/issues/6798#issuecomment-412871616
-    const getItemSpy = jest.spyOn(Storage.prototype, "getItem");
+    const getItemSpy: any = jest.spyOn(Storage.prototype, "getItem");
 
     mount(<App defaultFilters={["ignore=defaults"]} uiDefaults={uiDefaults} />);
 
@@ -81,11 +89,11 @@ describe("<App />", () => {
       JSON.stringify({
         filters: ["ignore=saved"],
         present: false,
-      })
+      }),
     );
 
     // https://github.com/facebook/jest/issues/6798#issuecomment-412871616
-    const getItemSpy = jest.spyOn(Storage.prototype, "getItem");
+    const getItemSpy: any = jest.spyOn(Storage.prototype, "getItem");
 
     mount(<App defaultFilters={["use=defaults"]} uiDefaults={uiDefaults} />);
 
@@ -102,7 +110,7 @@ describe("<App />", () => {
       JSON.stringify({
         filters: ["ignore=saved"],
         present: true,
-      })
+      }),
     );
 
     window.history.pushState({}, "App", "/?q=use%3Dquery");
@@ -130,7 +138,7 @@ describe("<App />", () => {
 
   it("unmounts without crashing", () => {
     const tree = mount(
-      <App defaultFilters={["foo=bar"]} uiDefaults={uiDefaults} />
+      <App defaultFilters={["foo=bar"]} uiDefaults={uiDefaults} />,
     );
     tree.unmount();
 
@@ -208,13 +216,13 @@ describe("<App /> theme", () => {
       <App
         defaultFilters={["foo=bar"]}
         uiDefaults={Object.assign({}, uiDefaults, { Theme: theme })}
-      />
+      />,
     );
 
   it("configures light theme when uiDefaults passes it", () => {
     const tree = getApp("light");
     expect(tree.find("span").at(0).html()).toBe(
-      '<span data-theme="light"></span>'
+      '<span data-theme="light"></span>',
     );
     tree.unmount();
   });
@@ -222,7 +230,7 @@ describe("<App /> theme", () => {
   it("configures dark theme when uiDefaults passes it", () => {
     const tree = getApp("dark");
     expect(tree.find("span").at(0).html()).toBe(
-      '<span data-theme="dark"></span>'
+      '<span data-theme="dark"></span>',
     );
     tree.unmount();
   });
@@ -230,7 +238,7 @@ describe("<App /> theme", () => {
   it("configures automatic theme when uiDefaults passes it", () => {
     const tree = getApp("auto");
     expect(tree.find("span").at(0).html()).toBe(
-      '<span data-theme="auto"></span>'
+      '<span data-theme="auto"></span>',
     );
     tree.unmount();
   });
@@ -238,7 +246,7 @@ describe("<App /> theme", () => {
   it("configures automatic theme when uiDefaults doesn't pass any value", () => {
     const tree = mount(<App defaultFilters={["foo=bar"]} uiDefaults={null} />);
     expect(tree.find("span").at(0).html()).toBe(
-      '<span data-theme="auto"></span>'
+      '<span data-theme="auto"></span>',
     );
     tree.unmount();
   });
@@ -350,7 +358,7 @@ describe("<App /> animations", () => {
       <App
         defaultFilters={["foo=bar"]}
         uiDefaults={Object.assign({}, uiDefaults, { Animations: animations })}
-      />
+      />,
     );
 
   it("enables animations in the context when set via UI defaults", () => {

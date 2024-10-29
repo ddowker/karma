@@ -37,7 +37,7 @@ const MountedLabelValueInput = (isValid: boolean) => {
     {
       wrappingComponent: ThemeContext.Provider,
       wrappingComponentProps: { value: MockThemeContext },
-    }
+    },
   );
 };
 
@@ -52,7 +52,7 @@ describe("<LabelValueInput />", () => {
     expect(toDiffableHtml(tree.html())).toMatchSnapshot();
     expect(useFetchGetMock.fetch.calls).toHaveLength(1);
     expect(useFetchGetMock.fetch.calls[0]).toBe(
-      "./labelValues.json?name=cluster"
+      "./labelValues.json?name=cluster",
     );
   });
 
@@ -144,10 +144,10 @@ describe("<LabelValueInput />", () => {
     matcher.values = [StringToOption("dev"), StringToOption("staging")];
     const tree = MountedLabelValueInput(true);
 
-    tree.find(".react-select__multi-value__remove").at(0).simulate("click");
+    tree.find("div.react-select__multi-value__remove").at(0).simulate("click");
     expect(matcher.values).toHaveLength(1);
 
-    tree.find(".react-select__multi-value__remove").simulate("click");
+    tree.find("div.react-select__multi-value__remove").simulate("click");
     expect(matcher.values).toHaveLength(0);
     expect(matcher.values).toEqual([]);
   });

@@ -8,6 +8,7 @@ import (
 	"github.com/jarcoal/httpmock"
 
 	"github.com/prymitive/karma/internal/config"
+	"github.com/prymitive/karma/internal/intern"
 	"github.com/prymitive/karma/internal/mapper/v017/models"
 
 	"github.com/rs/zerolog"
@@ -219,7 +220,7 @@ func TestAlertmanagerSanitizedURI(t *testing.T) {
 func TestAlertmanagerPullWithInvalidURI(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.PanicLevel)
 	am, _ := NewAlertmanager("cluster", "test", "%gh&%ij")
-	err := am.Pull()
+	err := am.Pull(intern.New())
 	if err == nil {
 		t.Error("am.Pull(invalid uri) didn't return any error")
 	}
@@ -228,7 +229,7 @@ func TestAlertmanagerPullWithInvalidURI(t *testing.T) {
 func TestAlertmanagerPullAlertsWithInvalidVersion(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.PanicLevel)
 	am, _ := NewAlertmanager("cluster", "test", "http://localhost")
-	err := am.pullAlerts("0.0.1")
+	err := am.pullAlerts("0.0.1", intern.New())
 	if err == nil {
 		t.Error("am.pullAlerts(invalid version) didn't return any error")
 	}
@@ -237,18 +238,9 @@ func TestAlertmanagerPullAlertsWithInvalidVersion(t *testing.T) {
 func TestAlertmanagerPullSilencesWithInvalidVersion(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.PanicLevel)
 	am, _ := NewAlertmanager("cluster", "test", "http://localhost")
-	err := am.pullSilences("0.0.1")
+	err := am.pullSilences("0.0.1", intern.New())
 	if err == nil {
 		t.Error("am.pullSilences(invalid version) didn't return any error")
-	}
-}
-
-func TestAlertmanagerFetchStatusWithInvalidVersion(t *testing.T) {
-	zerolog.SetGlobalLevel(zerolog.PanicLevel)
-	am, _ := NewAlertmanager("cluster", "test", "http://localhost")
-	_, err := am.fetchStatus("0.0.1")
-	if err == nil {
-		t.Error("am.fetchStatus(invalid version) didn't return any error")
 	}
 }
 
@@ -270,14 +262,6 @@ func TestExpiredSilences(t *testing.T) {
 
 	httpmock.RegisterResponder("GET", fmt.Sprintf("%s/metrics", uri),
 		httpmock.NewStringResponder(200, "alertmanager_build_info{version=\"0.22.1\"} 1\n"))
-	httpmock.RegisterResponder("GET", fmt.Sprintf("%s/api/v2/status", uri),
-		httpmock.NewStringResponder(200, `{
-		"cluster": {
-			"name": "BBBBBBBBBBBBBBBBBBBBBBBBBB",
-			"peers": [],
-			"status": "ready"
-		}
-	}`))
 	httpmock.RegisterResponder("GET", fmt.Sprintf("%s/api/v2/silences", uri),
 		httpmock.NewStringResponder(200, fmt.Sprintf(`[
 {
@@ -373,7 +357,7 @@ func TestExpiredSilences(t *testing.T) {
 
 	am, _ := NewAlertmanager("expired", "expired", uri)
 
-	if err := am.Pull(); err != nil {
+	if err := am.Pull(intern.New()); err != nil {
 		t.Error(err)
 	}
 	alertGroups := am.Alerts()

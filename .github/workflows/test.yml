@@ -14,25 +14,24 @@ on:
 jobs:
   test-go:
     name: Test Go code
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set git slug envs
-        uses: rlespinasse/github-slug-action@4.2.5
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19.0
+          go-version: 1.22.1
+          cache: false
 
-      - name: Cache Go modules
+      - name: Restore cache
         id: cache-go-modules
-        uses: actions/cache@v3
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GITHUB_REF_SLUG }}-go-modules-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-${{ github.ref_name }}-go-modules-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-main-go-modules-
 
@@ -44,39 +43,35 @@ jobs:
         run: make mock-assets
 
       - name: Test Go code
-        uses: nick-invision/retry@v2.8.1
-        with:
-          timeout_minutes: 10
-          max_attempts: 5
-          command: make test-go
+        run: make test-go
 
       - name: Report code coverage
-        uses: codecov/codecov-action@v3.1.0
+        uses: codecov/codecov-action@v4.1.1
         with:
           flags: backend
           files: ./coverage.txt
+          token: c77c73a6-81e1-4fa1-8372-9170d7953d41
 
   lint-go:
     name: Lint Go code
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set git slug envs
-        uses: rlespinasse/github-slug-action@4.2.5
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19.0
+          go-version: 1.22.1
+          cache: false
 
-      - name: Cache Go modules
+      - name: Restore cache
         id: cache-go-modules
-        uses: actions/cache@v3
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-${{ env.GITHUB_REF_SLUG }}-go-modules-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-${{ github.ref_name }}-go-modules-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-main-go-modules-
 
@@ -92,7 +87,7 @@ jobs:
 
   test-js:
     name: Test JS code
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         env:
@@ -100,14 +95,14 @@ jobs:
           - "env TZ=Pacific/Easter"
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Test Node JS code
         run: ${{ matrix.env }} make -C ui test-js
@@ -115,39 +110,41 @@ jobs:
           NODE_ENV: test
 
       - name: Report code coverage
-        uses: codecov/codecov-action@v3.1.0
+        uses: codecov/codecov-action@v4.1.1
         with:
           flags: ui
           directory: ./ui/coverage
+          token: c77c73a6-81e1-4fa1-8372-9170d7953d41
 
   lint-js:
     name: Lint JS code
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Lint Node JS code
         run: make -C ui lint-js
 
   format-go:
     name: Check Go code formatting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19.0
+          go-version: 1.22.1
+          cache: false
 
       - name: Format Go code
         run: make format-go
@@ -157,17 +154,17 @@ jobs:
 
   format-js:
     name: Check JS code formatting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Lint Node JS code
         run: make -C ui format
@@ -177,10 +174,10 @@ jobs:
 
   deps-js:
     name: Check JS dependencies
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: depcheck
         uses: prymitive/depcheck-action@v1.4.3
@@ -190,17 +187,17 @@ jobs:
 
   package-lock:
     name: Check package-lock.json
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Run npm install
         run: cd ui && npm i
@@ -210,44 +207,44 @@ jobs:
 
   lint-versions:
     name: Lint Versions
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Lint Bootstrap Version
         run: make lint-bootstrap-version
 
   typescript:
     name: Check for non-typescript components
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Check for non-typescript UI components
         run: make -C ui lint-typescript
 
   git-commit:
     name: Lint git commit
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Lint git commit
-        uses: wagoid/commitlint-github-action@v5.0.2
+        uses: wagoid/commitlint-github-action@v6.0.0
         with:
           configFile: .commitlintrc.cjs
 
   docs:
     name: Lint documentation
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Run markdown-lint
         uses: avto-dev/markdown-lint@v1.5.0
@@ -270,7 +267,7 @@ jobs:
       - typescript
       - git-commit
       - docs
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: All linters passed
         run: "true"
@@ -279,16 +276,16 @@ jobs:
     name: Benchmark Go code compare
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Set git slug envs
-        uses: rlespinasse/github-slug-action@4.2.5
+        uses: actions/checkout@v4
 
       - name: Get modified files
-        uses: dorny/paths-filter@v2.10.2
+        uses: dorny/paths-filter@v3.0.2
         id: filter
         with:
           list-files: "shell"
@@ -300,12 +297,13 @@ jobs:
               - 'go.sum'
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19.0
+          go-version: 1.22.1
+          cache: false
 
-      - name: Cache Go
-        uses: actions/cache@v3
+      - name: Restore cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/go-build
@@ -333,13 +331,16 @@ jobs:
     name: Webpack bundle size compare
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Get modified files
-        uses: dorny/paths-filter@v2.10.2
+        uses: dorny/paths-filter@v3.0.2
         id: filter
         with:
           list-files: "shell"
@@ -348,11 +349,11 @@ jobs:
               - 'ui/**/*'
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Diff bundle size
         if: steps.filter.outputs.ui == 'true'
@@ -361,57 +362,36 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PULL_REQUEST_NUMBER: ${{ github.event.number }}
 
-  percy:
-    name: Percy UI snapshots
-    if: github.event_name != 'release' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
-    needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-
-      - name: Get modified files
-        uses: dorny/paths-filter@v2.10.2
-        id: filter
-        with:
-          list-files: "shell"
-          filters: |
-            percy:
-              - 'ui/src/**/*'
-              - 'ui/.storybook/*'
-              - 'ui/package.json'
-
-      - name: Set up Node JS
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
-
-      - name: Run Percy
-        if: steps.filter.outputs.percy == 'true'
-        run: make -C ui test-percy
-        env:
-          NODE_ENV: test
-          PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-
   cross-compile:
     name: Cross compile binaries
     needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.19.0
+          go-version: 1.22.1
+          cache: false
 
       - name: Cache Go
-        uses: actions/cache@v3
+        if: github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Restore cache
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/go-build
@@ -421,14 +401,19 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Set up Node JS
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
+          node-version: 21.7.1
+          cache: "npm"
+          cache-dependency-path: "ui/package-lock.json"
 
       - name: Cross compile binaries
-        run: make crosscompile -j 2
+        if: github.event_name != 'pull_request'
+        run: make -j2 crosscompile
+
+      - name: Cross compile binaries (PR)
+        if: github.event_name == 'pull_request'
+        run: make -j2 cc-linux-386 cc-linux-amd64 cc-linux-arm64 cc-windows-amd64
 
       - name: Compress binaries
         shell: bash
@@ -441,13 +426,13 @@ jobs:
       - name: Get release
         if: github.event_name == 'release'
         id: get_release
-        uses: bruceadams/get-release@v1.2.3
+        uses: bruceadams/get-release@v1.3.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload binaries to GitHub release
         if: github.event_name == 'release'
-        uses: AButler/upload-release-assets@v2.0
+        uses: AButler/upload-release-assets@v3.0
         with:
           files: "artifacts/*"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -455,32 +440,29 @@ jobs:
   docker:
     name: Build docker image
     needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set git slug envs
-        uses: rlespinasse/github-slug-action@4.2.5
-
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: lmierzwa
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Login to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -490,9 +472,9 @@ jobs:
         if: github.event_name == 'release'
         run: |
           echo 'DOCKER_TAGS<<EOF' >> $GITHUB_ENV
-          echo 'lmierzwa/karma:${{ env.GITHUB_REF_SLUG }}' >> $GITHUB_ENV
+          echo 'lmierzwa/karma:${{ github.ref_name }}' >> $GITHUB_ENV
           echo 'lmierzwa/karma:latest' >> $GITHUB_ENV
-          echo 'ghcr.io/prymitive/karma:${{ env.GITHUB_REF_SLUG }}' >> $GITHUB_ENV
+          echo 'ghcr.io/prymitive/karma:${{ github.ref_name }}' >> $GITHUB_ENV
           echo 'ghcr.io/prymitive/karma:latest' >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
 
@@ -520,7 +502,7 @@ jobs:
 
       - name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
@@ -529,58 +511,3 @@ jobs:
           tags: ${{ env.DOCKER_TAGS }}
           build-args: |
             VERSION=${{ env.VERSION }}
-
-  demo-deploy:
-    name: Deploy demo app to Heroku
-    if: github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
-    needs: stage-test-and-lint
-    runs-on: ubuntu-20.04
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node JS
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18.7.0
-          cache: 'npm'
-          cache-dependency-path: 'ui/e2e/package-lock.json'
-
-      - name: Install Heroku CLI
-        run: curl -s --connect-timeout 30 --fail https://cli-assets.heroku.com/install.sh | sh
-
-      - name: Build Docker image
-        run: docker build --build-arg VERSION=$(make show-version) -t registry.heroku.com/karma-demo/web -f demo/Dockerfile .
-        shell: bash
-
-      - name: Write .netrc
-        run: |
-          echo "machine api.heroku.com" >> $HOME/.netrc
-          echo "  login l.mierzwa@gmail.com" >> $HOME/.netrc
-          echo "  password ${HEROKU_API_KEY}" >> $HOME/.netrc
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-
-      - name: Login to Heroku
-        run: echo "${HEROKU_API_KEY}" | docker login registry.heroku.com -u _  --password-stdin
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-
-      - name: Push docker image to Heroku
-        run: docker push registry.heroku.com/karma-demo/web
-
-      - name: Trigger Heroku release
-        run: /usr/local/bin/heroku container:release web --app karma-demo
-
-      - name: Run e2e test
-        uses: nick-invision/retry@v2.8.1
-        with:
-          timeout_minutes: 10
-          max_attempts: 3
-          command: make -C ui/e2e test
-
-      - name: Rollback on failure
-        if: failure()
-        run: /usr/local/bin/heroku releases:rollback --app karma-demo

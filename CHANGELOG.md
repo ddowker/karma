@@ -1,5 +1,102 @@
 # Changelog
 
+## v0.120
+
+### Changed
+
+- Karma no longer uses alertmanager `api/v2/status` to discover cluster peers.
+  It will only rely on `cluster` field configuration options set in karma config
+  file.
+
+## v0.119
+
+### Fixed
+
+- `silenceForm.strip.labels` did't strip labels that are in the filter bar #5817.
+
+## v0.118
+
+### Fixed
+
+- Fixed `listen:prefix` handling that was broken in v0.117 - #5623.
+
+## v0.117
+
+### Changed
+
+- Migrated project from Create React App to [Vite](http://vitejs.dev).
+
+## v0.116
+
+### Added
+
+- Added `headers` option to `history:rewrite` config block. This allows to set
+  custom headers passed to Prometheus when sending history query requests.
+
+## v0.115
+
+### Fixed
+
+- Improved memory usage.
+
+## v0.114
+
+### Fixed
+
+- Fixed silcen form crashes when `silenceForm:defaultAlertmanagers` config option
+  is not set.
+
+## v0.113
+
+### Added
+
+- Added `silenceForm:defaultAlertmanagers` config option - #5086 (@david-caro).
+
+## v0.112
+
+### Fixed
+
+- Upgraded project dependencies.
+
+## v0.111
+
+### Fixed
+
+- Fixed duplicated `@receiver` labels showing both on the alert and in the footer.
+
+## v0.110
+
+### Fixed
+
+- Alert group footer was always hidden when displaying only one alert,
+  even if there were shared labels or annotations to display - #4892.
+
+## v0.109
+
+### Added
+
+- Added ability to delete multiple silences from the silence browser modal - #4618.
+- Added `build_info` metric - #4764.
+
+### Fixed
+
+- Managing silences for alertmanager instances with `/` in the name was failing.
+  This release adds a workaround for it - #4674.
+
+## v0.108
+
+### Fixed
+
+- Fixed CSS glitches on Google Chrome 105.
+
+## v0.107
+
+### Changed
+
+- Don't show fatal error page if configured health checks are failing but
+  alertmanager is still showing alerts. A popup message with will still
+  be visible.
+
 ## v0.106
 
 ### Added

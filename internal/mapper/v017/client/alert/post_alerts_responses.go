@@ -19,7 +19,7 @@ type PostAlertsReader struct {
 }
 
 // ReadResponse reads a server response into the received o.
-func (o *PostAlertsReader) ReadResponse(response runtime.ClientResponse, consumer runtime.Consumer) (any, error) {
+func (o *PostAlertsReader) ReadResponse(response runtime.ClientResponse, consumer runtime.Consumer) (interface{}, error) {
 	switch response.Code() {
 	case 200:
 		result := NewPostAlertsOK()
@@ -40,7 +40,7 @@ func (o *PostAlertsReader) ReadResponse(response runtime.ClientResponse, consume
 		}
 		return nil, result
 	default:
-		return nil, runtime.NewAPIError("response status code does not match any response statuses defined for this endpoint in the swagger spec", response, response.Code())
+		return nil, runtime.NewAPIError("[POST /alerts] postAlerts", response, response.Code())
 	}
 }
 
@@ -50,14 +50,48 @@ func NewPostAlertsOK() *PostAlertsOK {
 }
 
 /*
-	PostAlertsOK describes a response with status code 200, with default header values.
+PostAlertsOK describes a response with status code 200, with default header values.
 
 Create alerts response
 */
 type PostAlertsOK struct {
 }
 
+// IsSuccess returns true when this post alerts o k response has a 2xx status code
+func (o *PostAlertsOK) IsSuccess() bool {
+	return true
+}
+
+// IsRedirect returns true when this post alerts o k response has a 3xx status code
+func (o *PostAlertsOK) IsRedirect() bool {
+	return false
+}
+
+// IsClientError returns true when this post alerts o k response has a 4xx status code
+func (o *PostAlertsOK) IsClientError() bool {
+	return false
+}
+
+// IsServerError returns true when this post alerts o k response has a 5xx status code
+func (o *PostAlertsOK) IsServerError() bool {
+	return false
+}
+
+// IsCode returns true when this post alerts o k response a status code equal to that given
+func (o *PostAlertsOK) IsCode(code int) bool {
+	return code == 200
+}
+
+// Code gets the status code for the post alerts o k response
+func (o *PostAlertsOK) Code() int {
+	return 200
+}
+
 func (o *PostAlertsOK) Error() string {
+	return fmt.Sprintf("[POST /alerts][%d] postAlertsOK ", 200)
+}
+
+func (o *PostAlertsOK) String() string {
 	return fmt.Sprintf("[POST /alerts][%d] postAlertsOK ", 200)
 }
 
@@ -72,7 +106,7 @@ func NewPostAlertsBadRequest() *PostAlertsBadRequest {
 }
 
 /*
-	PostAlertsBadRequest describes a response with status code 400, with default header values.
+PostAlertsBadRequest describes a response with status code 400, with default header values.
 
 Bad request
 */
@@ -80,9 +114,44 @@ type PostAlertsBadRequest struct {
 	Payload string
 }
 
+// IsSuccess returns true when this post alerts bad request response has a 2xx status code
+func (o *PostAlertsBadRequest) IsSuccess() bool {
+	return false
+}
+
+// IsRedirect returns true when this post alerts bad request response has a 3xx status code
+func (o *PostAlertsBadRequest) IsRedirect() bool {
+	return false
+}
+
+// IsClientError returns true when this post alerts bad request response has a 4xx status code
+func (o *PostAlertsBadRequest) IsClientError() bool {
+	return true
+}
+
+// IsServerError returns true when this post alerts bad request response has a 5xx status code
+func (o *PostAlertsBadRequest) IsServerError() bool {
+	return false
+}
+
+// IsCode returns true when this post alerts bad request response a status code equal to that given
+func (o *PostAlertsBadRequest) IsCode(code int) bool {
+	return code == 400
+}
+
+// Code gets the status code for the post alerts bad request response
+func (o *PostAlertsBadRequest) Code() int {
+	return 400
+}
+
 func (o *PostAlertsBadRequest) Error() string {
 	return fmt.Sprintf("[POST /alerts][%d] postAlertsBadRequest  %+v", 400, o.Payload)
 }
+
+func (o *PostAlertsBadRequest) String() string {
+	return fmt.Sprintf("[POST /alerts][%d] postAlertsBadRequest  %+v", 400, o.Payload)
+}
+
 func (o *PostAlertsBadRequest) GetPayload() string {
 	return o.Payload
 }
@@ -103,7 +172,7 @@ func NewPostAlertsInternalServerError() *PostAlertsInternalServerError {
 }
 
 /*
-	PostAlertsInternalServerError describes a response with status code 500, with default header values.
+PostAlertsInternalServerError describes a response with status code 500, with default header values.
 
 Internal server error
 */
@@ -111,9 +180,44 @@ type PostAlertsInternalServerError struct {
 	Payload string
 }
 
+// IsSuccess returns true when this post alerts internal server error response has a 2xx status code
+func (o *PostAlertsInternalServerError) IsSuccess() bool {
+	return false
+}
+
+// IsRedirect returns true when this post alerts internal server error response has a 3xx status code
+func (o *PostAlertsInternalServerError) IsRedirect() bool {
+	return false
+}
+
+// IsClientError returns true when this post alerts internal server error response has a 4xx status code
+func (o *PostAlertsInternalServerError) IsClientError() bool {
+	return false
+}
+
+// IsServerError returns true when this post alerts internal server error response has a 5xx status code
+func (o *PostAlertsInternalServerError) IsServerError() bool {
+	return true
+}
+
+// IsCode returns true when this post alerts internal server error response a status code equal to that given
+func (o *PostAlertsInternalServerError) IsCode(code int) bool {
+	return code == 500
+}
+
+// Code gets the status code for the post alerts internal server error response
+func (o *PostAlertsInternalServerError) Code() int {
+	return 500
+}
+
 func (o *PostAlertsInternalServerError) Error() string {
 	return fmt.Sprintf("[POST /alerts][%d] postAlertsInternalServerError  %+v", 500, o.Payload)
 }
+
+func (o *PostAlertsInternalServerError) String() string {
+	return fmt.Sprintf("[POST /alerts][%d] postAlertsInternalServerError  %+v", 500, o.Payload)
+}
+
 func (o *PostAlertsInternalServerError) GetPayload() string {
 	return o.Payload
 }

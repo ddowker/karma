@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/jarcoal/httpmock"
 
 	"github.com/prymitive/karma/internal/alertmanager"
+	"github.com/prymitive/karma/internal/intern"
 	"github.com/prymitive/karma/internal/mock"
 )
 
@@ -66,7 +67,7 @@ func TestAuthHeader(t *testing.T) {
 	for _, testCase := range authHeaderTests {
 		testCase := testCase // scopelint pin
 		for _, version := range mock.ListAllMocks() {
-			apiCache, _ = lru.New(100)
+			apiCache, _ = lru.New[string, []byte](100)
 
 			am, err := alertmanager.NewAlertmanager(
 				"cluster",
@@ -83,7 +84,6 @@ func TestAuthHeader(t *testing.T) {
 
 			for _, m := range []string{
 				"metrics",
-				"api/v2/status",
 				"api/v2/silences",
 				"api/v2/alerts/groups",
 			} {
@@ -119,7 +119,7 @@ func TestAuthHeader(t *testing.T) {
 					})
 			}
 
-			_ = am.Pull()
+			_ = am.Pull(intern.New())
 		}
 	}
 }
